@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
@@ -15,17 +15,35 @@ export default function ClassRankingsPage() {
 
   const [year, setYear] = useState(selectedAcademicYear || '');
   const [loading, setLoading] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  const refresh = async (y?: string) => {
+    setLoading(true);
+    await fetchClassIndex(y ?? year ?? undefined);
+    setLastUpdated(new Date());
+    setLoading(false);
+  };
+
+  // Initial load
   useEffect(() => {
-    handleRecalculate(year || undefined);
+    refresh(year || undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleRecalculate = async (y?: string) => {
-    setLoading(true);
-    await fetchClassIndex(y || year || undefined);
-    setLoading(false);
-  };
+  // Re-fetch whenever year filter changes
+  useEffect(() => {
+    refresh(year || undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
+
+  // Auto-refresh every 30 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refresh(year || undefined);
+    }, 30000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [year]);
 
   const ranked = (classIndexData || []).filter((e) => e.rank !== null) as (ClassIndexEntry & { rank: number })[];
   const unranked = (classIndexData || []).filter((e) => e.rank === null);
@@ -49,13 +67,49 @@ export default function ClassRankingsPage() {
       <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: '24px' }}>
 
         {/* Header */}
-        <div>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.02em' }}>
-            Class Rankings
-          </h1>
-          <p style={{ fontSize: '0.88rem', color: '#6B7280', marginTop: '4px', margin: 0 }}>
-            Moderated class index based on evaluator-locked submissions.
-          </p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#111827', margin: 0, letterSpacing: '-0.02em' }}>
+              Class Rankings
+            </h1>
+            <p style={{ fontSize: '0.88rem', color: '#6B7280', marginTop: '4px', margin: 0 }}>
+              Moderated class index based on evaluator-locked submissions.
+            </p>
+          </div>
+
+          {/* Live badge + last updated */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '6px',
+              background: '#dcfce7', color: '#16a34a', borderRadius: '9999px',
+              padding: '5px 13px', fontSize: '0.76rem', fontWeight: 800, border: '1px solid #bbf7d0'
+            }}>
+              <span style={{
+                width: '7px', height: '7px', borderRadius: '50%', background: '#16a34a',
+                display: 'inline-block',
+                animation: 'pulse 1.8s ease-in-out infinite'
+              }} />
+              LIVE
+            </span>
+            {lastUpdated && (
+              <span style={{ fontSize: '0.75rem', color: '#9CA3AF', fontWeight: 600 }}>
+                Updated {lastUpdated.toLocaleTimeString()}
+              </span>
+            )}
+            <button
+              onClick={() => refresh(year || undefined)}
+              disabled={loading}
+              title="Refresh now"
+              style={{
+                background: loading ? '#e0e7ff' : '#EDE9FE', color: loading ? '#a5b4fc' : '#5B21B6',
+                border: '1.5px solid #c4b5fd', borderRadius: '9999px', padding: '6px 16px',
+                fontWeight: 800, fontSize: '0.78rem', cursor: loading ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+            >
+              {loading ? '⏳ Refreshing…' : '↻ Refresh'}
+            </button>
+          </div>
         </div>
 
         {/* Formula and Controls */}
@@ -67,7 +121,7 @@ export default function ClassRankingsPage() {
             M = (S - P) / N^2  x  (1 + 100 x (N - n))
           </p>
           <p style={{ fontSize: '0.78rem', color: '#6366f1', margin: '0 0 18px' }}>
-            S = Locked marks sum | P = Penalty pts | N = Class size | n = {smallestClassSize} (smallest class) | K = 100
+            S = Evaluated/Locked marks sum | P = Penalty pts | N = Class size | n = {smallestClassSize} (smallest class) | K = 100
           </p>
           <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
             <div>
@@ -83,39 +137,32 @@ export default function ClassRankingsPage() {
                 {academicYears.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             </div>
-            <button
-              onClick={() => handleRecalculate(year || undefined)}
-              disabled={loading}
-              style={{
-                background: loading ? '#818cf8' : 'linear-gradient(135deg,#4F46E5,#7C3AED)',
-                color: '#fff', border: 'none', borderRadius: '9999px', padding: '11px 28px',
-                fontWeight: 800, fontSize: '0.88rem', cursor: loading ? 'not-allowed' : 'pointer',
-                boxShadow: '0 4px 14px rgba(99,102,241,0.3)', transition: 'all 0.2s ease',
-              }}
-            >
-              {loading ? 'Calculating...' : 'Recalculate'}
-            </button>
+            <p style={{ margin: 0, fontSize: '0.76rem', color: '#9CA3AF', fontWeight: 600 }}>
+              Rankings refresh automatically every 30 seconds.
+            </p>
           </div>
         </div>
 
         {/* Loading */}
-        {loading && <div style={{ textAlign: 'center', padding: '48px', color: '#6366f1', fontWeight: 700 }}>Computing moderated index...</div>}
+        {loading && classIndexData === null && (
+          <div style={{ textAlign: 'center', padding: '48px', color: '#6366f1', fontWeight: 700 }}>Computing moderated index…</div>
+        )}
 
         {/* Empty state */}
         {!loading && classIndexData !== null && classIndexData.length === 0 && (
           <div style={{ background: '#fff', borderRadius: '20px', border: '1px solid #E5E7EB', padding: '48px', textAlign: 'center' }}>
             <div style={{ fontSize: '2.5rem', marginBottom: '12px' }}>No data yet</div>
-            <p style={{ color: '#6B7280', margin: 0, fontSize: '0.88rem' }}>Set N and P for classes in Department Management, then Recalculate.</p>
+            <p style={{ color: '#6B7280', margin: 0, fontSize: '0.88rem' }}>Set N and P for classes in Department Management, then wait for submissions to be evaluated.</p>
           </div>
         )}
 
         {/* Podium top 3 */}
-        {!loading && ranked.length >= 1 && (
+        {ranked.length >= 1 && (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: '16px' }}>
             {ranked.slice(0, 3).map((entry) => {
               const pod = podiumColors[entry.rank];
               return (
-                <div key={entry.class_name} style={{ background: pod.bg, border: `2px solid ${pod.border}`, borderRadius: '20px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div key={entry.class_name} style={{ background: pod.bg, border: `2px solid ${pod.border}`, borderRadius: '20px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px', transition: 'box-shadow 0.3s ease' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '1.8rem' }}>{pod.emoji}</span>
                     <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#78716c', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{pod.label}</span>
@@ -136,14 +183,14 @@ export default function ClassRankingsPage() {
         )}
 
         {/* Full table */}
-        {!loading && (ranked.length > 0 || unranked.length > 0) && (
-          <div style={{ background: '#fff', borderRadius: '24px', border: '1px solid #E5E7EB', padding: '28px', boxShadow: '0 4px 20px -2px rgba(0,0,0,0.04)' }}>
+        {(ranked.length > 0 || unranked.length > 0) && (
+          <div style={{ background: '#fff', borderRadius: '24px', border: '1px solid #E5E7EB', padding: '28px', boxShadow: '0 4px 20px -2px rgba(0,0,0,0.04)', opacity: loading ? 0.6 : 1, transition: 'opacity 0.3s ease' }}>
             <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#111827', marginTop: 0, marginBottom: '20px' }}>Full Class Rankings</h3>
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #E5E7EB' }}>
-                    {['Rank', 'Class', 'Department', 'N (Students)', 'S (Locked Marks)', 'P (Penalty)', 'M (Index)'].map((h) => (
+                    {['Rank', 'Class', 'Department', 'N (Students)', 'S (Evaluated Marks)', 'P (Penalty)', 'M (Index)'].map((h) => (
                       <th key={h} style={{ fontSize: '0.68rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9CA3AF', paddingBottom: '14px', paddingRight: '16px', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -188,6 +235,14 @@ export default function ClassRankingsPage() {
             </p>
           </div>
         )}
+
+        {/* Pulse animation */}
+        <style>{`
+          @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.8); }
+          }
+        `}</style>
       </div>
     </div>
   );
