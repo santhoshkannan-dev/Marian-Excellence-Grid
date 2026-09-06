@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Hero } from '@/components/Hero';
 import { PolicyCarousel } from '@/components/PolicyCarousel';
 import { EvaluationGrid } from '@/components/EvaluationGrid';
@@ -11,6 +12,7 @@ import { OutcomesGrid } from '@/components/OutcomesGrid';
 import { PolicyCategory } from '@/components/policyData';
 
 export default function PolicyPage() {
+  const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<PolicyCategory | null>(null);
 
   const handleOpenDetails = (category: PolicyCategory) => {
@@ -400,28 +402,61 @@ export default function PolicyPage() {
       {/* 6. Expected Outcomes */}
       <OutcomesGrid />
 
-      {/* Back button Row */}
+      {/* Navigation Actions Row */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'center',
+          alignItems: 'center',
+          gap: '16px',
           borderTop: '1px solid var(--color-border)',
           paddingTop: '40px',
-          marginTop: '20px'
+          marginTop: '20px',
+          flexWrap: 'wrap',
         }}
       >
         <Link
           href="/"
+          id="policy-return-home-btn"
+          className="btn"
+          style={{
+            padding: '14px 32px',
+            borderRadius: '14px',
+            fontSize: '1rem',
+            background: '#ffffff',
+            color: '#1e293b',
+            border: '1.5px solid var(--glass-border)',
+            boxShadow: '0 4px 14px rgba(15, 23, 42, 0.06)',
+            textDecoration: 'none',
+            cursor: 'pointer',
+            fontWeight: 700,
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            router.push('/');
+          }}
+        >
+          &larr; Return to Home
+        </Link>
+        <Link
+          href="/login"
+          id="policy-portal-login-btn"
           className="btn btn-primary"
           style={{
             padding: '14px 32px',
             borderRadius: '14px',
             fontSize: '1rem',
-            boxShadow: '0 10px 25px rgba(79, 70, 229, 0.15)',
-            textDecoration: 'none'
+            boxShadow: '0 10px 25px rgba(79, 70, 229, 0.2)',
+            textDecoration: 'none',
+            cursor: 'pointer',
+            fontWeight: 700,
+          }}
+          onClick={(e) => {
+            e.preventDefault();
+            router.push('/login');
           }}
         >
-          &larr; Return to Workspace
+          Portal Login &rarr;
         </Link>
       </div>
 

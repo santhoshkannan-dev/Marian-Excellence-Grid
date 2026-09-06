@@ -17,6 +17,32 @@ import {
   Champion
 } from '@/data/initialData';
 
+export interface Course {
+  id: number;
+  department: number;
+  department_name?: string;
+  department_code?: string;
+  name: string;
+  abbreviation: string;
+  email_code: string;
+  is_multi_batch: boolean;
+  duration_years: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface Department {
+  id: number;
+  name: string;
+  code: string;
+  email_prefix: string;
+  level: 'UG' | 'PG' | 'Professional' | 'Other' | string;
+  courses: Course[];
+  classes: any[];
+  created_at?: string;
+  updated_at?: string;
+}
+
 interface AppContextType {
   currentRole: string;
   activePage: string;
@@ -82,6 +108,18 @@ interface AppContextType {
   setEditingSubId: (id: number | null) => void;
   classes: any[];
   departments: any[];
+  courses: Course[];
+  fetchDepartmentsFull: () => Promise<void>;
+  createDepartment: (data: { name: string; code?: string; email_prefix?: string; level?: string }) => Promise<{ success: boolean; error?: string; data?: any }>;
+  updateDepartment: (id: number, data: { name?: string; code?: string; email_prefix?: string; level?: string }) => Promise<{ success: boolean; error?: string; data?: any }>;
+  deleteDepartmentById: (id: number) => Promise<{ success: boolean; error?: string; deleted_courses?: number; deleted_classes?: number }>;
+  fetchCourses: (deptId?: number) => Promise<void>;
+  createCourse: (data: { department: number; name: string; abbreviation: string; email_code: string; is_multi_batch?: boolean; duration_years?: number }) => Promise<{ success: boolean; error?: string; data?: any }>;
+  updateCourse: (id: number, data: { department?: number; name?: string; abbreviation?: string; email_code?: string; is_multi_batch?: boolean; duration_years?: number }) => Promise<{ success: boolean; error?: string; data?: any }>;
+  deleteCourse: (id: number) => Promise<{ success: boolean; error?: string; deleted_classes?: number }>;
+  createClass: (data: { course_id?: number; department_code?: string; name?: string; year_number?: number; section?: string; batch_start_year?: number }) => Promise<{ success: boolean; error?: string; data?: any }>;
+  updateClass: (id: number, data: any) => Promise<{ success: boolean; error?: string; data?: any }>;
+  deleteClass: (id: number) => Promise<{ success: boolean; error?: string }>;
   addAcademicYearGlobal: (year: string) => Promise<void>;
   deleteAcademicYearGlobal: (year: string) => Promise<void>;
   setActiveAcademicYearGlobal: (year: string, isActive?: boolean) => Promise<void>;
@@ -256,6 +294,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [currentUserInfo, setCurrentUserInfo] = useState<AppContextType['currentUserInfo']>(null);
   const [classes, setClasses] = useState<any[]>(defaultClasses);
   const [departments, setDepartments] = useState<any[]>(defaultDepartments);
+  const [courses, setCourses] = useState<Course[]>([]);
   const [championsData, setChampionsData] = useState<Record<string, Champion[]>>({});
 
   // Mark moderation & class rankings state
@@ -280,7 +319,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
-  // Fetch departments and classes from backend on mount
+  // Fetch departments, courses and classes from backend on mount
   useEffect(() => {
     fetch('http://localhost:8000/api/departments/')
       .then((res) => res.json())
@@ -290,6 +329,15 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         }
       })
       .catch((err) => console.error("Failed to fetch departments from backend:", err));
+
+    fetch('http://localhost:8000/api/courses/')
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setCourses(data);
+        }
+      })
+      .catch((err) => console.error("Failed to fetch courses from backend:", err));
 
     fetch('http://localhost:8000/api/auth/classes/')
       .then((res) => res.json())
@@ -646,6 +694,21 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const fetchDepartmentsFull = fetchDepartments;
+
+  const fetchCourses = async (deptId?: number) => {
+    try {
+      const url = deptId ? `http://localhost:8000/api/courses/?department=${deptId}` : 'http://localhost:8000/api/courses/';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setCourses(data);
+      }
+    } catch (e) {
+      console.error('Failed to fetch courses:', e);
+    }
+  };
+
   const fetchClasses = async () => {
     try {
       const res = await fetch('http://localhost:8000/api/auth/classes/');
@@ -796,6 +859,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       fetchSubmissions();
       fetchAcademicYears();
       fetchDepartments();
+      fetchCourses();
       fetchClasses();
       fetchUsers();
       fetchCriteriaCatalog();
@@ -1362,6 +1426,188 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     }
   };
 
+  const createDepartment = async (data: { name: string; code?: string; email_prefix?: string; level?: string }) => {
+    try {
+      const res = await fetch('http://localhost:8000/api/departments/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const newDept = await res.json();
+        await fetchDepartments();
+        return { success: true, data: newDept };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || JSON.stringify(err) };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const updateDepartment = async (id: number, data: { name?: string; code?: string; email_prefix?: string; level?: string }) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/departments/${id}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        await fetchDepartments();
+        return { success: true, data: updated };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || JSON.stringify(err) };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const deleteDepartmentById = async (id: number) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/departments/${id}/`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const result = await res.json();
+        await fetchDepartments();
+        await fetchCourses();
+        await fetchClasses();
+        return { success: true, ...result };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || 'Failed to delete department' };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const createCourse = async (data: { department: number; name: string; abbreviation: string; email_code: string; is_multi_batch?: boolean; duration_years?: number }) => {
+    try {
+      const res = await fetch('http://localhost:8000/api/courses/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const newCourse = await res.json();
+        await fetchCourses();
+        await fetchDepartments();
+        return { success: true, data: newCourse };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || JSON.stringify(err) };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const updateCourse = async (id: number, data: { department?: number; name?: string; abbreviation?: string; email_code?: string; is_multi_batch?: boolean; duration_years?: number }) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/courses/${id}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        await fetchCourses();
+        await fetchDepartments();
+        return { success: true, data: updated };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || JSON.stringify(err) };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const deleteCourse = async (id: number) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/courses/${id}/`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        const result = await res.json();
+        await fetchCourses();
+        await fetchDepartments();
+        await fetchClasses();
+        return { success: true, ...result };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || 'Failed to delete course' };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const createClass = async (data: { course_id?: number; department_code?: string; name?: string; year_number?: number; section?: string; batch_start_year?: number }) => {
+    try {
+      const res = await fetch('http://localhost:8000/api/auth/classes/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const newClass = await res.json();
+        await fetchClasses();
+        await fetchDepartments();
+        return { success: true, data: newClass };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || JSON.stringify(err) };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const updateClass = async (id: number, data: any) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/auth/classes/${id}/`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        await fetchClasses();
+        await fetchDepartments();
+        return { success: true, data: updated };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || JSON.stringify(err) };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
+  const deleteClass = async (id: number) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/auth/classes/${id}/`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        await fetchClasses();
+        await fetchDepartments();
+        return { success: true };
+      } else {
+        const err = await res.json().catch(() => ({}));
+        return { success: false, error: err.error || 'Failed to delete class' };
+      }
+    } catch (e: any) {
+      return { success: false, error: e.message || 'Network error' };
+    }
+  };
+
   const addClassGlobal = async (name: string, deptCode: string) => {
     const deptObj = departments.find((d) => d.code === deptCode || d.name === deptCode);
     const deptName = deptObj ? deptObj.name : deptCode;
@@ -1769,6 +2015,18 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setEditingSubId,
         classes,
         departments,
+        courses,
+        fetchDepartmentsFull,
+        createDepartment,
+        updateDepartment,
+        deleteDepartmentById,
+        fetchCourses,
+        createCourse,
+        updateCourse,
+        deleteCourse,
+        createClass,
+        updateClass,
+        deleteClass,
         addAcademicYearGlobal,
         deleteAcademicYearGlobal,
         setActiveAcademicYearGlobal,

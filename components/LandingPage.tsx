@@ -2,29 +2,31 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { policyCategories, PolicyCategory } from './policyData';
 
 interface StandingItem {
+  rank: number;
   className: string;
   department: string;
+  totalSubmissions: number;
   totalScore: number;
   percentage: number;
   color: string;
 }
 
-
-
-const top9Data: StandingItem[] = [
-  { className: 'BSc CS B', department: 'Computer Science', totalScore: 1272, percentage: 15.7, color: '#4f46e5' },
-  { className: 'BCom C', department: 'Commerce', totalScore: 978, percentage: 12.1, color: '#ec4899' },
-  { className: 'BSc CS A', department: 'Computer Science', totalScore: 966, percentage: 11.9, color: '#8b5cf6' },
-  { className: 'BA English B', department: 'English', totalScore: 930, percentage: 11.5, color: '#10b981' },
-  { className: 'BA English A', department: 'English', totalScore: 876, percentage: 10.8, color: '#14b8a6' },
-  { className: 'BBA B', department: 'Business Admin', totalScore: 850, percentage: 10.5, color: '#f59e0b' },
-  { className: 'BSc Physics A', department: 'Physics', totalScore: 754, percentage: 9.3, color: '#ef4444' },
-  { className: 'BCA A', department: 'The Under-Graduate Department of Computer Applications', totalScore: 750, percentage: 9.2, color: '#06b6d4' },
-  { className: 'BBA A', department: 'Business Admin', totalScore: 730, percentage: 9.0, color: '#3b82f6' },
+const top10FallbackData: StandingItem[] = [
+  { rank: 1, className: 'II MCA', department: 'PG Department of Computer Applications', totalSubmissions: 6, totalScore: 80, percentage: 22.0, color: '#4f46e5' },
+  { rank: 2, className: 'BSc CS B', department: 'Computer Science', totalSubmissions: 15, totalScore: 1272, percentage: 14.5, color: '#059669' },
+  { rank: 3, className: 'BCom C', department: 'Commerce', totalSubmissions: 12, totalScore: 978, percentage: 11.8, color: '#d97706' },
+  { rank: 4, className: 'BSc CS A', department: 'Computer Science', totalSubmissions: 11, totalScore: 966, percentage: 11.2, color: '#ec4899' },
+  { rank: 5, className: 'BA English B', department: 'English', totalSubmissions: 10, totalScore: 930, percentage: 10.4, color: '#8b5cf6' },
+  { rank: 6, className: 'BA English A', department: 'English', totalSubmissions: 9, totalScore: 876, percentage: 9.2, color: '#06b6d4' },
+  { rank: 7, className: 'BBA B', department: 'Business Admin', totalSubmissions: 8, totalScore: 850, percentage: 8.5, color: '#f97316' },
+  { rank: 8, className: 'BSc Physics A', department: 'Physics', totalSubmissions: 7, totalScore: 754, percentage: 7.2, color: '#3b82f6' },
+  { rank: 9, className: 'BCA A', department: 'Department of Computer Applications', totalSubmissions: 7, totalScore: 750, percentage: 7.0, color: '#10b981' },
+  { rank: 10, className: 'BBA A', department: 'Business Admin', totalSubmissions: 6, totalScore: 730, percentage: 6.8, color: '#ef4444' },
 ];
 
 const mockStudents = [
@@ -91,7 +93,22 @@ const CountUp: React.FC<{ end: number; duration?: number; suffix?: string }> = (
 };
 
 export const LandingPage: React.FC = () => {
-  const { submissionOpen, submissionWindowStart, submissionWindowEnd, activeAcademicYear, championsData } = useApp();
+  const router = useRouter();
+  const {
+    submissionOpen,
+    submissionWindowStart,
+    submissionWindowEnd,
+    activeAcademicYear,
+    championsData,
+    classes,
+    submissions,
+    classIndexData,
+    fetchClassIndex,
+    fetchSubmissions,
+    students,
+    users,
+    criteriaCatalog,
+  } = useApp();
   
   // Use the latest year available in championsData or fallback to '2025'
   const availableYears = Object.keys(championsData).sort((a, b) => parseInt(b) - parseInt(a));
@@ -102,41 +119,286 @@ export const LandingPage: React.FC = () => {
   const [selectedClass, setSelectedClass] = useState<StandingItem | null>(null);
   const scrollTrackRef = useRef<HTMLDivElement>(null);
 
-  const { classes, submissions } = useApp();
-
-  const activeStandingsData: StandingItem[] = React.useMemo(() => {
-    const colors = ['#4f46e5', '#ec4899', '#8b5cf6', '#10b981', '#14b8a6', '#f59e0b', '#ef4444', '#06b6d4', '#3b82f6'];
-
-    if (!classes || classes.length === 0) {
-      return top9Data;
+  // Fetch official class ranking index and submissions on mount / academic year change
+  useEffect(() => {
+    if (fetchClassIndex) {
+      fetchClassIndex(activeAcademicYear || undefined);
     }
+    if (fetchSubmissions) {
+      fetchSubmissions();
+    }
+  }, [activeAcademicYear, fetchClassIndex, fetchSubmissions]);
 
-    const computed = classes.map((c, idx) => {
-      const classSubmissions = (submissions || []).filter((s) => {
-        const matchesClass = s.className ? s.className.toLowerCase().trim() === c.name.toLowerCase().trim() : false;
-        const isApproved = ['Approved', 'Verified', 'Student Rep Verified', 'Evaluated', 'Locked'].includes(s.status);
-        return matchesClass && isApproved;
+  // Robust helper to match submissions belonging to a class
+  const getClassSubmissionsCountAndScore = React.useCallback(
+    (className: string) => {
+      if (!submissions || !className) return { count: 0, score: 0 };
+      const normTarget = className.trim().toLowerCase();
+
+      const matched = submissions.filter((s) => {
+        // 1. Direct class match
+        const directClass = (s.className || (s as any).class_name || '').trim().toLowerCase();
+        if (directClass && directClass === normTarget) {
+          if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+          return true;
+        }
+
+        // 2. Email-based user / student lookup
+        const email = (s.user_email || s.userEmail || '').trim().toLowerCase();
+        if (email) {
+          const u = (users || []).find((user) => user.email?.trim().toLowerCase() === email);
+          if (u && u.className && u.className.trim().toLowerCase() === normTarget) {
+            if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+            return true;
+          }
+          const st = (students || []).find((stud) => stud.email?.trim().toLowerCase() === email);
+          if (st && st.className && st.className.trim().toLowerCase() === normTarget) {
+            if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+            return true;
+          }
+        }
+
+        // 3. ID-based user / student lookup
+        const uById = (users || []).find((user) => user.id === s.studentId);
+        if (uById && uById.className && uById.className.trim().toLowerCase() === normTarget) {
+          if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+          return true;
+        }
+
+        const stById = (students || []).find((stud) => stud.id === s.studentId);
+        if (stById && stById.className && stById.className.trim().toLowerCase() === normTarget) {
+          if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+          return true;
+        }
+
+        return false;
       });
 
-      const totalScore = classSubmissions.reduce((acc, curr) => acc + (curr.marks || 10), 0);
+      const evaluatedScore = matched
+        .filter((s) => ['Approved', 'Verified', 'Student Rep Verified', 'Evaluated', 'Locked'].includes(s.status))
+        .reduce((acc, curr) => acc + (curr.marks || 0), 0);
 
       return {
-        className: c.name,
-        department: c.department || 'General',
-        totalScore: totalScore > 0 ? totalScore : Math.max(100, 1272 - idx * 60),
-        percentage: 0,
-        color: colors[idx % colors.length]
+        count: matched.length,
+        score: evaluatedScore,
       };
+    },
+    [submissions, activeAcademicYear, users, students]
+  );
+
+  // Active Standings ordered strictly by official Class Ranking
+  const activeStandingsData: StandingItem[] = React.useMemo(() => {
+    // Priority 1: Official class ranking from classIndexData (/api/class-index/)
+    if (classIndexData && classIndexData.length > 0) {
+      const rankedEntries = [...classIndexData.filter((e) => e.rank !== null)].sort(
+        (a, b) => (a.rank as number) - (b.rank as number)
+      );
+      const unrankedEntries = [...classIndexData.filter((e) => e.rank === null)].sort(
+        (a, b) => b.S - a.S
+      );
+
+      const combined = [...rankedEntries, ...unrankedEntries];
+
+      const mapped = combined.map((entry, idx) => {
+        const { count, score } = getClassSubmissionsCountAndScore(entry.class_name);
+        const totalScore = entry.S > 0 ? entry.S : score;
+        const rank = entry.rank !== null ? entry.rank : idx + 1;
+        const fallback = top10FallbackData.find((f) => f.className.toLowerCase() === entry.class_name.toLowerCase());
+        const totalSubmissions = count > 0 ? count : (fallback ? fallback.totalSubmissions : 0);
+
+        return {
+          rank,
+          className: entry.class_name,
+          department: entry.department || 'General',
+          totalSubmissions,
+          totalScore,
+          percentage: 0,
+          color: '#2563eb',
+        };
+      });
+
+      const top10 = mapped.slice(0, 10);
+      const grandTotal = top10.reduce((sum, item) => sum + item.totalScore, 0) || 1;
+      return top10.map((item) => ({
+        ...item,
+        percentage: Number(((item.totalScore / grandTotal) * 100).toFixed(1)),
+      }));
+    }
+
+    // Priority 2: Compute standings from classes & submissions
+    if (classes && classes.length > 0) {
+      const computed = classes.map((c, idx) => {
+        const { count, score } = getClassSubmissionsCountAndScore(c.name);
+        const fallback = top10FallbackData.find((f) => f.className.toLowerCase() === c.name.toLowerCase());
+        const totalSubmissions = count > 0 ? count : (fallback ? fallback.totalSubmissions : 0);
+        const totalScore = score > 0 ? score : (fallback ? fallback.totalScore : 0);
+
+        return {
+          rank: idx + 1,
+          className: c.name,
+          department: c.department || 'General',
+          totalSubmissions,
+          totalScore,
+          percentage: 0,
+          color: '#2563eb',
+        };
+      });
+
+      computed.sort((a, b) => {
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        return b.totalSubmissions - a.totalSubmissions;
+      });
+
+      const top10 = computed.slice(0, 10).map((item, idx) => ({
+        ...item,
+        rank: idx + 1,
+        color: '#2563eb',
+      }));
+
+      const grandTotal = top10.reduce((sum, item) => sum + item.totalScore, 0) || 1;
+      return top10.map((item) => ({
+        ...item,
+        percentage: Number(((item.totalScore / grandTotal) * 100).toFixed(1)),
+      }));
+    }
+
+    // Priority 3: Curated Top 10 fallback data
+    return top10FallbackData.map((f) => ({ ...f, color: '#2563eb' }));
+  }, [classIndexData, classes, getClassSubmissionsCountAndScore]);
+
+  // Helper to extract criteria category & title
+  const getCriteriaDetails = React.useCallback(
+    (criteriaId: number) => {
+      if (criteriaCatalog && criteriaCatalog.length > 0) {
+        for (const cat of criteriaCatalog) {
+          const found = cat.items.find((it) => String(it.id) === String(criteriaId));
+          if (found) {
+            return {
+              category: cat.category || 'General Activities',
+              title: found.title,
+            };
+          }
+        }
+      }
+      return {
+        category: 'General Activities',
+        title: `Criteria #${criteriaId}`,
+      };
+    },
+    [criteriaCatalog]
+  );
+
+  interface ClassActivityItem {
+    title: string;
+    subcategory?: string;
+    marks: number;
+    status: string;
+  }
+
+  interface ClassCategoryGroup {
+    category: string;
+    count: number;
+    points: number;
+    activities: ClassActivityItem[];
+  }
+
+  // Group submissions of a selected class into categories
+  const selectedClassCategories: ClassCategoryGroup[] = React.useMemo(() => {
+    if (!selectedClass) return [];
+
+    const normTarget = selectedClass.className.trim().toLowerCase();
+    const classSubs = (submissions || []).filter((s) => {
+      // 1. Direct match
+      const directClass = (s.className || (s as any).class_name || '').trim().toLowerCase();
+      if (directClass && directClass === normTarget) {
+        if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+        return true;
+      }
+      // 2. User/Student Email lookup
+      const email = (s.user_email || s.userEmail || '').trim().toLowerCase();
+      if (email) {
+        const u = (users || []).find((user) => user.email?.trim().toLowerCase() === email);
+        if (u && u.className && u.className.trim().toLowerCase() === normTarget) {
+          if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+          return true;
+        }
+        const st = (students || []).find((stud) => stud.email?.trim().toLowerCase() === email);
+        if (st && st.className && st.className.trim().toLowerCase() === normTarget) {
+          if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+          return true;
+        }
+      }
+      // 3. ID lookup
+      const uById = (users || []).find((user) => user.id === s.studentId);
+      if (uById && uById.className && uById.className.trim().toLowerCase() === normTarget) {
+        if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+        return true;
+      }
+      const stById = (students || []).find((stud) => stud.id === s.studentId);
+      if (stById && stById.className && stById.className.trim().toLowerCase() === normTarget) {
+        if (activeAcademicYear && s.academicYear && s.academicYear !== activeAcademicYear) return false;
+        return true;
+      }
+      return false;
     });
 
-    computed.sort((a, b) => b.totalScore - a.totalScore);
-    const grandTotal = computed.reduce((sum, item) => sum + item.totalScore, 0) || 1;
+    if (classSubs.length > 0) {
+      const catMap = new Map<string, ClassCategoryGroup>();
 
-    return computed.slice(0, 9).map((item) => ({
-      ...item,
-      percentage: Number(((item.totalScore / grandTotal) * 100).toFixed(1))
-    }));
-  }, [classes, submissions]);
+      for (const s of classSubs) {
+        const details = getCriteriaDetails(s.criteriaId);
+        const catName = details.category;
+        const current = catMap.get(catName) || { category: catName, count: 0, points: 0, activities: [] };
+        current.count += 1;
+        const isApproved = ['Approved', 'Verified', 'Student Rep Verified', 'Evaluated', 'Locked'].includes(s.status);
+        const marks = isApproved ? (Number(s.marks) || 0) : 0;
+        current.points += marks;
+        const subcategory = (s.evidence as any)?.subItem || (s.evidence as any)?.researchSubItem || '';
+        current.activities.push({
+          title: details.title,
+          subcategory,
+          marks: Number(s.marks) || 0,
+          status: s.status,
+        });
+        catMap.set(catName, current);
+      }
+
+      return Array.from(catMap.values()).sort((a, b) => b.points - a.points || b.count - a.count);
+    }
+
+    // Fallback categories for classes when no submissions are in DB
+    const totalScore = selectedClass.totalScore || 0;
+    const totalSubs = selectedClass.totalSubmissions || 0;
+
+    const fallbackList: ClassCategoryGroup[] = [
+      {
+        category: 'Academics & Semester Grades',
+        count: Math.max(1, Math.round(totalSubs * 0.4)),
+        points: Math.round(totalScore * 0.45 * 10) / 10,
+        activities: [{ title: 'Semester Result & Academic Performance', marks: Math.round(totalScore * 0.45 * 10) / 10, status: 'Evaluated' }]
+      },
+      {
+        category: 'Research & Publications',
+        count: Math.max(1, Math.round(totalSubs * 0.25)),
+        points: Math.round(totalScore * 0.3 * 10) / 10,
+        activities: [{ title: 'Research Publications & Papers', marks: Math.round(totalScore * 0.3 * 10) / 10, status: 'Evaluated' }]
+      },
+      {
+        category: 'Certifications & Online Courses',
+        count: Math.max(1, Math.round(totalSubs * 0.2)),
+        points: Math.round(totalScore * 0.15 * 10) / 10,
+        activities: [{ title: 'NPTEL & MOOC Certifications', marks: Math.round(totalScore * 0.15 * 10) / 10, status: 'Evaluated' }]
+      },
+      {
+        category: 'Outreach, Extension & Co-Curricular',
+        count: Math.max(1, Math.round(totalSubs * 0.15)),
+        points: Math.round(totalScore * 0.1 * 10) / 10,
+        activities: [{ title: 'Community Outreach & Extension Programs', marks: Math.round(totalScore * 0.1 * 10) / 10, status: 'Evaluated' }]
+      },
+    ];
+
+    return fallbackList.filter(c => c.count > 0 || c.points > 0);
+  }, [selectedClass, submissions, activeAcademicYear, users, students, getCriteriaDetails]);
 
   useEffect(() => {
     if (availableYears.length > 0 && !availableYears.includes(activeYear)) {
@@ -262,9 +524,9 @@ export const LandingPage: React.FC = () => {
     const filtered: typeof searchResults = [];
 
     // Filter Classes
-    top9Data.forEach(c => {
+    activeStandingsData.forEach(c => {
       if (c.className.toLowerCase().includes(query.toLowerCase()) || c.department.toLowerCase().includes(query.toLowerCase())) {
-        filtered.push({ type: 'Class', title: c.className, subtitle: `${c.department} Department • ${c.totalScore} pts`, refItem: c });
+        filtered.push({ type: 'Class', title: c.className, subtitle: `${c.department} • #${c.rank} • ${c.totalSubmissions} subs • ${c.totalScore} pts`, refItem: c });
       }
     });
 
@@ -312,8 +574,8 @@ export const LandingPage: React.FC = () => {
   const cx = 250;
   const cy = 310;
   const maxRadius = 220;
-  const radiusStep = 17;
-  const topScore = top9Data[0].totalScore;
+  const radiusStep = 15;
+  const maxSubmissions = Math.max(...activeStandingsData.map((d) => d.totalSubmissions), 1);
 
   // Categories Stacked layout styles
   const getCatStyle = (index: number) => {
@@ -401,6 +663,43 @@ export const LandingPage: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Header Action Navigation Buttons */}
+          <div className="header-actions-group" style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Link
+              href="/policy"
+              id="header-btn-policy"
+              className="header-nav-btn policy-nav-btn"
+              onClick={(e) => {
+                e.preventDefault();
+                router.push('/policy');
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'none' }}>
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="16" x2="12" y2="12" />
+                <line x1="12" y1="8" x2="12.01" y2="8" />
+              </svg>
+              <span>Policy Criteria</span>
+            </Link>
+
+            <Link
+              href="/login"
+              id="header-btn-login"
+              className="header-nav-btn login-nav-btn"
+              onClick={(e) => {
+                e.preventDefault();
+                router.push('/login');
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ pointerEvents: 'none' }}>
+                <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+                <polyline points="10 17 15 12 10 7" />
+                <line x1="15" x2="3" y1="12" y2="12" />
+              </svg>
+              <span>Portal Login</span>
+            </Link>
+          </div>
         </div>
 
         {/* 1. Class Progress Gauge */}
@@ -408,20 +707,32 @@ export const LandingPage: React.FC = () => {
           <div className="dashboard-grid">
             {/* Left Panel: Class Progress Gauge */}
             <div className="chart-section">
-              <div className="chart-heading-container">
-                <h2 className="chart-title">Class Progress Gauge</h2>
+              <div className="chart-heading-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="chart-title" style={{ margin: 0 }}>Class Progress Gauge</h2>
+                  <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                    Progress driven by Class Total Submissions
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '16px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#1d4ed8', display: 'inline-block' }}></span>
+                  <span>Top {activeStandingsData.length} Classes</span>
+                </div>
               </div>
 
               <div className="svg-container">
                 <svg viewBox="-10 0 520 325" width="100%" height="100%">
                   <defs>
-                    {activeStandingsData.map((_, idx) => (
-                      <linearGradient id={`arc-grad-${idx}`} key={idx} x1="100%" y1="0%" x2="0%" y2="0%">
-                        <stop offset="0%" stopColor="#4f46e5" />
-                        <stop offset="50%" stopColor="#818cf8" />
-                        <stop offset="100%" stopColor="#e0e7ff" />
-                      </linearGradient>
-                    ))}
+                    <linearGradient id="gauge-blue-gradient" x1="100%" y1="0%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor="#1d4ed8" />
+                      <stop offset="60%" stopColor="#3b82f6" />
+                      <stop offset="100%" stopColor="#93c5fd" />
+                    </linearGradient>
+                    <linearGradient id="gauge-blue-highlight" x1="100%" y1="0%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor="#1e40af" />
+                      <stop offset="60%" stopColor="#2563eb" />
+                      <stop offset="100%" stopColor="#60a5fa" />
+                    </linearGradient>
                   </defs>
 
                   {/* Scale Ticks & Percentage Labels */}
@@ -450,14 +761,17 @@ export const LandingPage: React.FC = () => {
                     );
                   })}
 
-                  {/* Concentric Semi-Circle Arcs */}
+                  {/* Concentric Semi-Circle Arcs - Same Color Gradient Blue */}
                   {activeStandingsData.map((item, idx) => {
                     const r = maxRadius - idx * radiusStep;
                     const dPath = `M ${cx + r} ${cy} A ${r} ${r} 0 0 0 ${cx - r} ${cy}`;
                     const pathLen = Math.PI * r;
-                    const topScore = Math.max(...activeStandingsData.map((d) => d.totalScore), 1);
-                    const ratio = item.totalScore / topScore;
-                    const progress = Math.max(0.02, ratio * 0.95);
+
+                    // Gauge progress is based on total number of submissions of the classes
+                    const subRatio = item.totalSubmissions / maxSubmissions;
+                    const progress = item.totalSubmissions === 0
+                      ? 0.02
+                      : Math.max(0.06, Math.min(0.96, subRatio * 0.95));
 
                     // Loading Animation Dash Offset logic
                     const dashOffset = isLoaded ? (pathLen * (1 - progress)) : pathLen;
@@ -473,113 +787,340 @@ export const LandingPage: React.FC = () => {
                       <g key={idx} style={{ opacity: isDimmed ? 0.25 : 1, transition: 'opacity 0.3s' }}>
                         {/* Background track */}
                         <path d={dPath} className="gauge-track" />
-                        {/* Filled Arc */}
+                        {/* Filled Arc - Uniform Blue Gradient */}
                         <path
                           d={dPath}
                           className={`gauge-arc ${isHighlighted ? 'highlighted' : ''}`}
-                          stroke={`url(#arc-grad-${idx})`}
+                          stroke={isHighlighted ? 'url(#gauge-blue-highlight)' : 'url(#gauge-blue-gradient)'}
                           strokeDasharray={pathLen}
                           strokeDashoffset={dashOffset}
-                          style={{ cursor: 'pointer', transition: 'stroke-dashoffset 1.5s cubic-bezier(0.25, 0.8, 0.25, 1)' }}
+                          style={{
+                            cursor: 'pointer',
+                            transition: 'stroke-dashoffset 1.5s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                          }}
                           onMouseEnter={() => setHoveredIndex(idx)}
                           onMouseLeave={() => setHoveredIndex(null)}
                           onClick={() => setSelectedClass(item)}
                         />
-                        {/* Score Label at tip */}
+                        {/* Submissions count label at the tip of each arc */}
                         <text
                           x={labelX}
                           y={labelY}
                           className={`arc-tip-label ${isHighlighted ? 'highlighted' : ''}`}
                           textAnchor="middle"
+                          style={{ fill: isHighlighted ? '#1d4ed8' : '#64748b' }}
                         >
-                          {item.totalScore.toLocaleString()}
+                          {item.totalSubmissions} {item.totalSubmissions === 1 ? 'sub' : 'subs'}
                         </text>
                       </g>
                     );
                   })}
+
+                  {/* Center Interactive Summary */}
+                  <g className="gauge-center-info" style={{ pointerEvents: 'none' }}>
+                    {hoveredIndex !== null && activeStandingsData[hoveredIndex] ? (
+                      <>
+                        <text x={cx} y={cy - 48} textAnchor="middle" style={{ fontSize: '1.05rem', fontWeight: 800, fill: '#1d4ed8' }}>
+                          {activeStandingsData[hoveredIndex].className}
+                        </text>
+                        <text x={cx} y={cy - 28} textAnchor="middle" style={{ fontSize: '0.78rem', fontWeight: 700, fill: '#1e293b' }}>
+                          Rank #{activeStandingsData[hoveredIndex].rank} • {activeStandingsData[hoveredIndex].totalSubmissions} {activeStandingsData[hoveredIndex].totalSubmissions === 1 ? 'Submission' : 'Submissions'}
+                        </text>
+                        <text x={cx} y={cy - 10} textAnchor="middle" style={{ fontSize: '0.72rem', fontWeight: 600, fill: '#64748b' }}>
+                          {activeStandingsData[hoveredIndex].totalScore.toLocaleString()} Class Points
+                        </text>
+                      </>
+                    ) : (
+                      <>
+                        <text x={cx} y={cy - 44} textAnchor="middle" style={{ fontSize: '0.94rem', fontWeight: 800, fill: '#1e293b' }}>
+                          Submissions Gauge
+                        </text>
+                        <text x={cx} y={cy - 26} textAnchor="middle" style={{ fontSize: '0.74rem', fontWeight: 600, fill: '#64748b' }}>
+                          Top {activeStandingsData.length} Ranked Classes
+                        </text>
+                        <text x={cx} y={cy - 10} textAnchor="middle" style={{ fontSize: '0.7rem', fontWeight: 700, fill: '#1d4ed8' }}>
+                          Peak: {maxSubmissions} {maxSubmissions === 1 ? 'sub' : 'subs'}
+                        </text>
+                      </>
+                    )}
+                  </g>
                 </svg>
               </div>
             </div>
 
-            {/* Right Panel: Standings or Class Detail View */}
+            {/* Right Panel: Top 10 Standings or Selected Class Detail View */}
             <div className="leaderboard-section">
               {selectedClass ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {/* Header with Rank, Class Name, and Close Button */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{selectedClass.className}</h2>
-                      <p className="muted" style={{ fontSize: '0.85rem' }}>{selectedClass.department} Department</p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{
+                        padding: '2px 8px',
+                        borderRadius: '8px',
+                        background: '#eff6ff',
+                        color: '#1d4ed8',
+                        fontWeight: 800,
+                        fontSize: '0.75rem',
+                      }}>
+                        {selectedClass.rank === 1 ? '🥇 Rank #1' : selectedClass.rank === 2 ? '🥈 Rank #2' : selectedClass.rank === 3 ? '🥉 Rank #3' : `Rank #${selectedClass.rank}`}
+                      </span>
+                      <h2 style={{ fontSize: '1.35rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>{selectedClass.className}</h2>
                     </div>
                     <button
                       onClick={() => setSelectedClass(null)}
-                      style={{ border: 'none', background: '#e2e8f0', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 800 }}
+                      style={{
+                        border: 'none',
+                        background: '#f1f5f9',
+                        color: '#64748b',
+                        borderRadius: '50%',
+                        width: '32px',
+                        height: '32px',
+                        cursor: 'pointer',
+                        fontWeight: 800,
+                        fontSize: '1.1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'background 0.2s',
+                      }}
+                      title="Back to Top 10 Standings"
                     >
                       &times;
                     </button>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '16px', background: '#ffffff', padding: '16px', borderRadius: '14px', border: '1px solid var(--glass-border)' }}>
-                    <div style={{ flex: 1, textAlign: 'center' }}>
-                      <div className="muted" style={{ fontSize: '0.78rem', fontWeight: 600 }}>Total Score</div>
-                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--primary)' }}>{selectedClass.totalScore} pts</div>
+                  {/* Summary Metric Cards: Class Submissions & Class Points */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Class Submissions</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1d4ed8', marginTop: '2px' }}>
+                        {selectedClass.totalSubmissions}
+                      </div>
+                    </div>
+                    <div style={{ background: '#f8fafc', padding: '12px 14px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                      <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Class Points</div>
+                      <div style={{ fontSize: '1.4rem', fontWeight: 800, color: '#059669', marginTop: '2px' }}>
+                        {selectedClass.totalScore.toLocaleString()} pts
+                      </div>
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                    <h3 style={{ fontSize: '0.95rem', fontWeight: 700 }}>📊 Scorecard Breakdown</h3>
-                    <div style={{ fontSize: '0.85rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Academics & Grades</span>
-                        <span style={{ fontWeight: 700 }}>45.0 pts</span>
-                      </div>
-                      <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '3px' }}>
-                        <div style={{ height: '100%', width: '85%', background: 'linear-gradient(90deg, #4f46e5, #3b82f6)', borderRadius: '3px' }}></div>
-                      </div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px' }}>
-                        <span>NPTEL & MOOC Certifications</span>
-                        <span style={{ fontWeight: 700 }}>30.0 pts</span>
-                      </div>
-                      <div style={{ height: '6px', background: '#e2e8f0', borderRadius: '3px' }}>
-                        <div style={{ height: '100%', width: '70%', background: 'linear-gradient(90deg, #4f46e5, #3b82f6)', borderRadius: '3px' }}></div>
-                      </div>
+                  {/* Submitted Categories Section */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '2px' }}>
+                    <div style={{ fontSize: '0.88rem', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>📂 Submitted Categories</span>
+                      <span style={{ fontSize: '0.74rem', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', padding: '2px 8px', borderRadius: '10px' }}>
+                        {selectedClassCategories.length} {selectedClassCategories.length === 1 ? 'category' : 'categories'}
+                      </span>
                     </div>
+                    <button
+                      onClick={() => setSelectedClass(null)}
+                      style={{
+                        border: 'none',
+                        background: 'transparent',
+                        color: '#2563eb',
+                        fontWeight: 700,
+                        fontSize: '0.78rem',
+                        cursor: 'pointer',
+                        padding: '2px 4px',
+                      }}
+                    >
+                      ← Back to Standings
+                    </button>
+                  </div>
+
+                  {/* List of All Submission Categories of this Class */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '310px', overflowY: 'auto', paddingRight: '4px' }}>
+                    {selectedClassCategories.map((cat, cIdx) => {
+                      const maxPts = Math.max(...selectedClassCategories.map((c) => c.points), 1);
+                      const widthPct = Math.min(100, Math.max(8, (cat.points / maxPts) * 100));
+
+                      const icon = cat.category.toLowerCase().includes('research') || cat.category.toLowerCase().includes('publication')
+                        ? '🔬'
+                        : cat.category.toLowerCase().includes('course') || cat.category.toLowerCase().includes('mooc') || cat.category.toLowerCase().includes('cert')
+                        ? '📜'
+                        : cat.category.toLowerCase().includes('outreach') || cat.category.toLowerCase().includes('extension')
+                        ? '🤝'
+                        : cat.category.toLowerCase().includes('prize') || cat.category.toLowerCase().includes('competi') || cat.category.toLowerCase().includes('hackathon')
+                        ? '🏆'
+                        : '📚';
+
+                      return (
+                        <div
+                          key={cIdx}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '12px',
+                            padding: '12px 14px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '8px',
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{ fontSize: '1.05rem' }}>{icon}</span>
+                              <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1e293b' }}>
+                                {cat.category}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <span style={{
+                                fontSize: '0.74rem',
+                                fontWeight: 700,
+                                color: '#1d4ed8',
+                                background: '#eff6ff',
+                                padding: '2px 8px',
+                                borderRadius: '10px',
+                                border: '1px solid #dbeafe',
+                                whiteSpace: 'nowrap',
+                              }}>
+                                {cat.count} {cat.count === 1 ? 'sub' : 'subs'}
+                              </span>
+                              <span style={{
+                                fontSize: '0.82rem',
+                                fontWeight: 800,
+                                color: '#059669',
+                                minWidth: '55px',
+                                textAlign: 'right',
+                              }}>
+                                {cat.points > 0 ? `${cat.points} pts` : 'Pending'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Points Progress Bar */}
+                          <div style={{ height: '5px', width: '100%', background: '#f1f5f9', borderRadius: '3px', overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${widthPct}%`, background: 'linear-gradient(90deg, #1d4ed8, #60a5fa)', borderRadius: '3px' }}></div>
+                          </div>
+
+                          {/* Activity Badges */}
+                          {cat.activities && cat.activities.length > 0 && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '2px' }}>
+                              {cat.activities.slice(0, 3).map((act, aIdx) => (
+                                <span
+                                  key={aIdx}
+                                  style={{
+                                    fontSize: '0.72rem',
+                                    color: '#475569',
+                                    background: '#f8fafc',
+                                    padding: '2px 6px',
+                                    borderRadius: '6px',
+                                    border: '1px solid #edf2f7',
+                                  }}
+                                >
+                                  {act.subcategory || act.title} {act.marks > 0 ? `(+${act.marks})` : ''}
+                                </span>
+                              ))}
+                              {cat.activities.length > 3 && (
+                                <span style={{ fontSize: '0.7rem', color: '#94a3b8', padding: '2px 4px' }}>
+                                  +{cat.activities.length - 3} more
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
                 <div>
-                  <div className="leaderboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: '16px' }}>
-                    <div>
-                      <h2 className="chart-title" style={{ margin: 0 }}>{`Top ${activeStandingsData.length} Standings`}</h2>
-                    </div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#64748b', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                      Class Points
-                    </div>
+                  <div className="leaderboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h2 className="chart-title" style={{ margin: 0 }}>{`Top ${activeStandingsData.length} Standings`}</h2>
                   </div>
 
-                  <div className="leaderboard-list">
+                  {/* 4 Clean Columns: Rank | Class | Class Submissions | Class Points */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '55px 1fr 140px 100px',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    borderBottom: '1.5px solid #e2e8f0',
+                    marginBottom: '6px',
+                  }}>
+                    <span>Rank</span>
+                    <span>Class</span>
+                    <span style={{ textAlign: 'center' }}>Class Submissions</span>
+                    <span style={{ textAlign: 'right' }}>Class Points</span>
+                  </div>
+
+                  <div className="leaderboard-list" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                     {activeStandingsData.map((item, idx) => {
-                      const initials = item.className.split(' ').map((n) => n[0]).join('').toUpperCase();
                       const isDimmed = hoveredIndex !== null && hoveredIndex !== idx;
                       const isHighlighted = hoveredIndex === idx;
+                      const rankDisplay = item.rank === 1 ? '🥇 #1' : item.rank === 2 ? '🥈 #2' : item.rank === 3 ? '🥉 #3' : `#${item.rank}`;
 
                       return (
                         <div
                           key={idx}
                           className={`leaderboard-row ${isHighlighted ? 'highlighted' : ''}`}
-                          style={{ opacity: isDimmed ? 0.35 : 1 }}
+                          style={{
+                            display: 'grid',
+                            gridTemplateColumns: '55px 1fr 140px 100px',
+                            alignItems: 'center',
+                            padding: '10px 12px',
+                            borderRadius: '10px',
+                            background: isHighlighted ? '#eff6ff' : 'transparent',
+                            border: isHighlighted ? '1.5px solid #bfdbfe' : '1.5px solid transparent',
+                            opacity: isDimmed ? 0.35 : 1,
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                          }}
                           onMouseEnter={() => setHoveredIndex(idx)}
                           onMouseLeave={() => setHoveredIndex(null)}
                           onClick={() => setSelectedClass(item)}
                         >
-                          <div className="row-left">
-                            <div className="row-bullet" style={{ backgroundColor: item.color }}></div>
-                            <div className="row-avatar">{initials}</div>
-                            <div className="row-class-name">{item.className}</div>
+                          {/* 1. Rank */}
+                          <span style={{
+                            fontSize: '0.84rem',
+                            fontWeight: 800,
+                            color: item.rank === 1 ? '#d97706' : item.rank === 2 ? '#64748b' : item.rank === 3 ? '#b45309' : '#475569',
+                          }}>
+                            {rankDisplay}
+                          </span>
+
+                          {/* 2. Class */}
+                          <span style={{
+                            fontSize: '0.94rem',
+                            fontWeight: 700,
+                            color: '#0f172a',
+                          }}>
+                            {item.className}
+                          </span>
+
+                          {/* 3. Class Submissions */}
+                          <div style={{ display: 'flex', justifyContent: 'center' }}>
+                            <span style={{
+                              fontSize: '0.78rem',
+                              fontWeight: 700,
+                              color: '#1d4ed8',
+                              background: '#eff6ff',
+                              padding: '3px 10px',
+                              borderRadius: '12px',
+                              border: '1px solid #bfdbfe',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {item.totalSubmissions} {item.totalSubmissions === 1 ? 'sub' : 'subs'}
+                            </span>
                           </div>
-                          <div className="row-right">
-                            <div className="row-score">{item.totalScore.toLocaleString()} pts</div>
-                          </div>
+
+                          {/* 4. Class Points */}
+                          <span style={{
+                            fontSize: '0.92rem',
+                            fontWeight: 800,
+                            color: '#0f172a',
+                            textAlign: 'right',
+                          }}>
+                            {item.totalScore.toLocaleString()} pts
+                          </span>
                         </div>
                       );
                     })}
@@ -618,10 +1159,28 @@ export const LandingPage: React.FC = () => {
             </div>
           </div>
           <div className="policy-preview-right" style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'stretch', width: '100%', maxWidth: '280px', margin: '0 auto' }}>
-            <Link href="/policy" className="btn btn-primary" style={{ padding: '14px 28px', borderRadius: '14px', fontSize: '0.95rem', textDecoration: 'none', textAlign: 'center' }}>
+            <Link
+              href="/policy"
+              id="btn-policy-preview"
+              className="btn btn-primary"
+              style={{ padding: '14px 28px', borderRadius: '14px', fontSize: '0.95rem', textDecoration: 'none', textAlign: 'center', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.preventDefault();
+                router.push('/policy');
+              }}
+            >
               View Full Policy &rarr;
             </Link>
-            <Link href="/login" className="btn" style={{ padding: '14px 28px', borderRadius: '14px', fontSize: '0.95rem', textDecoration: 'none', textAlign: 'center', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#ffffff', fontWeight: 700, boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)' }}>
+            <Link
+              href="/login"
+              id="btn-login-preview"
+              className="btn"
+              style={{ padding: '14px 28px', borderRadius: '14px', fontSize: '0.95rem', textDecoration: 'none', textAlign: 'center', background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: '#ffffff', fontWeight: 700, boxShadow: '0 4px 12px rgba(15, 23, 42, 0.15)', cursor: 'pointer' }}
+              onClick={(e) => {
+                e.preventDefault();
+                router.push('/login');
+              }}
+            >
               Portal Login &rarr;
             </Link>
           </div>

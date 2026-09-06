@@ -13,6 +13,9 @@ from .views import (
     SubmissionDetailView,
     AcademicYearListView,
     DepartmentListView,
+    DepartmentDetailView,
+    CourseListView,
+    CourseDetailView,
     UserManagementView,
     SystemSettingView,
     UserGroupListView,
@@ -36,6 +39,9 @@ urlpatterns = [
     path('class-index/', ClassIndexView.as_view(), name='class-index'),
     path('academic-years/', AcademicYearListView.as_view(), name='academic-years'),
     path('departments/', DepartmentListView.as_view(), name='departments'),
+    path('departments/<int:pk>/', DepartmentDetailView.as_view(), name='department-detail'),
+    path('courses/', CourseListView.as_view(), name='courses'),
+    path('courses/<int:pk>/', CourseDetailView.as_view(), name='course-detail'),
     path('users/', UserManagementView.as_view(), name='user-management'),
     path('submissions/', SubmissionListView.as_view(), name='submission-list'),
     path('submissions/<int:pk>/', SubmissionDetailView.as_view(), name='submission-detail'),
@@ -49,5 +55,3 @@ urlpatterns = [
     path('champions/', ChampionListView.as_view(), name='champions-list'),
     path('champions/<int:pk>/', ChampionDetailView.as_view(), name='champions-detail'),
 ]
-
-

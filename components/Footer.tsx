@@ -2,10 +2,11 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 
 export const Footer: React.FC = () => {
   const pathname = usePathname();
+  const router = useRouter();
   const isPortalRoute = ['/student', '/teacher', '/admin', '/evaluator', '/iqac'].some(
     (prefix) => pathname.startsWith(prefix)
   );
@@ -26,8 +27,26 @@ export const Footer: React.FC = () => {
         <div className="footer-links-col">
           <h4>Useful Links</h4>
           <div className="footer-links">
-            <Link href="/policy">Policy Criteria</Link>
-            <Link href="/login">Portal Login</Link>
+            <Link
+              href="/policy"
+              id="footer-btn-policy"
+              onClick={(e) => {
+                e.preventDefault();
+                router.push('/policy');
+              }}
+            >
+              Policy Criteria
+            </Link>
+            <Link
+              href="/login"
+              id="footer-btn-login"
+              onClick={(e) => {
+                e.preventDefault();
+                router.push('/login');
+              }}
+            >
+              Portal Login
+            </Link>
             <a href="#core-analytics-section">Live Rankings</a>
             <a href="#core-analytics-section">Notice Board</a>
           </div>

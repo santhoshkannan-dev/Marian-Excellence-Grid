@@ -25,7 +25,7 @@ except ImportError:
 
 from django.db import transaction
 from django.db.models import Q, Sum
-from .models import User, Class, Department, Submission, AcademicYear, SystemSetting, UserGroupModel, CriteriaCategory, CriteriaItem, CriteriaRule
+from .models import User, Class, Department, Course, Submission, AcademicYear, SystemSetting, UserGroupModel, CriteriaCategory, CriteriaItem, CriteriaRule
 
 
 VALID_STATE_TRANSITIONS = {
@@ -202,120 +202,164 @@ def parse_name_from_email(email):
     return parts[0].capitalize()
 
 
-def parse_student_email(email):
+def parse_email_code(email):
     """
-    Parses Marian College student email format:
-    e.g. amal.25pmc114@mariancollege.org -> II MCA, PG Dept of Computer Applications
-    e.g. santhosh.25ubc154@mariancollege.org -> II BCA A, UG Dept of Computer Applications
+    Parses the raw code segment from a Marian College student email.
+    Returns dict with level_char, email_code, batch_year, roll_digits, roll_number, section_hint
+    e.g. amal.25pmc114@mariancollege.org ->
+         level_char='p', email_code='mc', batch_year=2025, roll_digits='114', roll_number=14
     """
     if not email or '@' not in email:
         return None
-
     local_part = email.split('@')[0]
     parts = local_part.split('.')
     if len(parts) < 2:
         return None
 
-    code_part = parts[-1] if any(char.isdigit() for char in parts[-1]) else (parts[1] if len(parts) > 1 else "")
-    first_name = parse_name_from_email(email)
-
-    if not (len(code_part) >= 5 and code_part[:2].isdigit()):
+    # The code segment is the last part that starts with digits
+    code_part = None
+    for p in reversed(parts):
+        if len(p) >= 5 and p[:2].isdigit():
+            code_part = p
+            break
+    if not code_part:
         return None
 
     batch_year = 2000 + int(code_part[:2])
-    level_char = code_part[2].lower()
-    course_code = code_part[3:5].lower()
-    roll_digits = code_part[5:]
+    level_char = code_part[2].lower()       # 'p' or 'u'
+    email_code = code_part[3:5].lower()     # 'mc', 'bc' etc.
+    roll_digits = code_part[5:]              # '114', '214'
 
-    is_pg = (level_char == 'p')
-    is_ug = (level_char == 'u')
-
-    course_map = {
-        'mc': ('Master of Computer Applications', 'MCA', 'Computer Applications'),
-        'bc': ('Bachelor of Computer Applications', 'BCA', 'Computer Applications'),
-        'ba': ('Bachelor of Business Administration', 'BBA', 'Business Administration'),
-        'cm': ('Commerce', 'BCom', 'Commerce'),
-        'sw': ('Social Work', 'MSW', 'Social Work'),
-    }
-
-    full_course, course_abbr, field_name = course_map.get(
-        course_code, 
-        (course_code.upper(), course_code.upper(), course_code.upper())
-    )
-
-    if course_abbr == 'BCA':
-        dept_name = "The Under-Graduate Department of Computer Applications"
-        dept_code = "UGDCA"
-    elif course_abbr == 'MCA':
-        dept_name = "The Post-Graduate Department of Computer Applications"
-        dept_code = "PGDCA"
-    elif course_abbr in ['BBA', 'MBA']:
-        dept_name = "Department of Business Administration"
-        dept_code = "BBA_MBA"
-    elif course_abbr in ['BCOM', 'MCOM', 'Commerce']:
-        dept_name = "Department of Commerce"
-        dept_code = "COMMERCE"
-    elif course_abbr in ['BSW', 'MSW', 'Social Work']:
-        dept_name = "Department of Social Work"
-        dept_code = "SOCIAL_WORK"
-    elif is_pg:
-        dept_name = f"Department of {field_name}"
-        dept_code = f"PG-{course_abbr}"
-    else:
-        dept_name = f"Department of {field_name}"
-        dept_code = f"UG-{course_abbr}"
-
-    section = ''
-    if is_ug and roll_digits.isdigit():
+    # Derive section hint from roll series (100-series -> A, 200-series -> B ...)
+    section_hint = ''
+    roll_number = None
+    if roll_digits.isdigit():
         roll_num = int(roll_digits)
+        roll_number = roll_num % 100       # actual roll: last two digits
         series = roll_num // 100
-        if series == 1:
-            section = 'A'
-        elif series == 2:
-            section = 'B'
-        elif series == 3:
-            section = 'C'
-        elif series == 4:
-            section = 'D'
-        else:
-            section = 'A'
-
-    current_year = datetime.now().year
-    year_diff = current_year - batch_year + 1
-    if year_diff <= 1:
-        year_roman = 'I'
-    elif year_diff == 2:
-        year_roman = 'II'
-    elif year_diff == 3:
-        year_roman = 'III'
-    elif year_diff >= 4:
-        year_roman = 'IV'
-    else:
-        year_roman = 'II'
-
-    if section:
-        class_name = f"{year_roman} {course_abbr} {section}"
-    else:
-        class_name = f"{year_roman} {course_abbr}"
+        section_map = {1: 'A', 2: 'B', 3: 'C', 4: 'D', 5: 'E', 6: 'F'}
+        section_hint = section_map.get(series, 'A')
 
     return {
-        "first_name": first_name,
-        "batch_year": batch_year,
-        "level": "Postgraduate" if is_pg else "Undergraduate",
-        "course_name": course_abbr,
-        "department_name": dept_name,
-        "department_code": dept_code,
-        "section": section,
-        "class_name": class_name
+        'level_char': level_char,
+        'email_code': email_code,
+        'batch_year': batch_year,
+        'roll_digits': roll_digits,
+        'roll_number': roll_number,
+        'section_hint': section_hint,
     }
+
+
+def get_active_year_start():
+    """
+    Returns the starting year integer of the current active AcademicYear.
+    e.g. if AcademicYear.year == '2026-2027', returns 2026.
+    Falls back to current calendar year if none is active.
+    """
+    try:
+        active = AcademicYear.objects.get(is_active=True)
+        return int(active.year.split('-')[0])
+    except (AcademicYear.DoesNotExist, ValueError, IndexError):
+        return datetime.now().year
+
+
+def get_year_roman(year_number):
+    mapping = {1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'VI'}
+    return mapping.get(year_number, str(year_number))
+
+
+def parse_student_email(email):
+    """
+    Parses Marian College student email format using DB Course/Department lookup.
+    Returns a dict with resolved department, class name, batch_year, roll_number etc.
+    Falls back to basic inference if no matching Course found in DB.
+    e.g. amal.25pmc114@mariancollege.org  ->  {class_name: 'II MCA', ...}
+    e.g. santhosh.25ubc214@mariancollege.org -> {class_name: 'II BCA B', ...}
+    """
+    parsed_code = parse_email_code(email)
+    if not parsed_code:
+        return None
+
+    level_char = parsed_code['level_char']
+    email_code = parsed_code['email_code']
+    batch_year = parsed_code['batch_year']
+    roll_number = parsed_code['roll_number']
+    roll_digits = parsed_code['roll_digits']
+    section_hint = parsed_code['section_hint']
+
+    # Calculate year-in-course from active academic year
+    active_year_start = get_active_year_start()
+    year_number = active_year_start - batch_year + 1
+    year_roman = get_year_roman(year_number)
+
+    # --- Try DB-driven resolution first ---
+    try:
+        course = Course.objects.select_related('department').get(
+            email_code=email_code,
+            department__email_prefix=level_char
+        )
+        dept_obj = course.department
+        section = section_hint if course.is_multi_batch else ''
+        class_name = f"{year_roman} {course.abbreviation} {section}".strip() if section else f"{year_roman} {course.abbreviation}"
+        return {
+            'first_name': parse_name_from_email(email),
+            'batch_year': batch_year,
+            'year_number': year_number,
+            'level': 'Postgraduate' if level_char == 'p' else 'Undergraduate',
+            'course': course,
+            'course_name': course.abbreviation,
+            'department_name': dept_obj.name,
+            'department_code': dept_obj.code,
+            'department_obj': dept_obj,
+            'section': section,
+            'class_name': class_name,
+            'roll_number': roll_number,
+            'roll_digits': roll_digits,
+            'db_resolved': True,
+        }
+    except Course.DoesNotExist:
+        pass
+
+    # --- Fallback: infer from hardcoded map (no DB course registered yet) ---
+    course_map = {
+        'mc': ('Master of Computer Applications', 'MCA', 'PGDCA'),
+        'bc': ('Bachelor of Computer Applications', 'BCA', 'UGDCA'),
+        'ba': ('Bachelor of Business Administration', 'BBA', 'UGDBA'),
+        'cm': ('Commerce', 'BCom', 'UGCOM'),
+        'sw': ('Social Work', 'MSW', 'PGSW'),
+    }
+    if email_code in course_map:
+        full_name, abbr, dept_code = course_map[email_code]
+        section = section_hint if level_char == 'u' else ''
+        class_name = f"{year_roman} {abbr} {section}".strip() if section else f"{year_roman} {abbr}"
+        return {
+            'first_name': parse_name_from_email(email),
+            'batch_year': batch_year,
+            'year_number': year_number,
+            'level': 'Postgraduate' if level_char == 'p' else 'Undergraduate',
+            'course': None,
+            'course_name': abbr,
+            'department_name': full_name,
+            'department_code': dept_code,
+            'department_obj': None,
+            'section': section,
+            'class_name': class_name,
+            'roll_number': roll_number,
+            'roll_digits': roll_digits,
+            'db_resolved': False,
+        }
+
+    return None
 
 
 def allocate_student_from_email(user):
     """
-    Allocates student user to the derived Department and Class objects based on their email.
+    Allocates student user to the resolved Department and Class objects.
+    Uses active AcademicYear + DB Course lookup for accurate class resolution.
+    Stores roll_number and batch_year on the user.
     """
     if user.role != 'student' and determine_role_from_email(user.email) != 'student':
-        # Dynamic check for faculty / teacher: sync class_name and department if assigned as class_teacher
+        # Faculty: sync class_name from class_teacher assignment
         advisor_class = Class.objects.filter(class_teacher=user).first()
         if advisor_class:
             if user.class_name != advisor_class or user.department != advisor_class.department:
@@ -332,36 +376,72 @@ def allocate_student_from_email(user):
     if not parsed:
         return user
 
-    update_fields = ['department', 'class_name']
+    update_fields = set(['department', 'class_name', 'roll_number', 'batch_year'])
+
+    # Store roll_number and batch_year
+    user.roll_number = parsed.get('roll_number')
+    user.batch_year = parsed.get('batch_year')
+
     if not user.first_name or user.first_name == user.username:
         derived_name = parse_name_from_email(user.email)
         name_parts = derived_name.split(" ", 1)
         user.first_name = name_parts[0]
+        update_fields.add('first_name')
         if len(name_parts) > 1:
             user.last_name = name_parts[1]
-            update_fields.extend(['first_name', 'last_name'])
-        else:
-            update_fields.append('first_name')
+            update_fields.add('last_name')
 
-    dept_obj, _ = Department.objects.get_or_create(
-        code=parsed["department_code"],
-        defaults={"name": parsed["department_name"]}
-    )
-    if dept_obj.name != parsed["department_name"]:
-        dept_obj.name = parsed["department_name"]
-        dept_obj.save()
+    # DB-driven path: Course was found in DB
+    if parsed.get('db_resolved') and parsed.get('department_obj'):
+        dept_obj = parsed['department_obj']
+        course = parsed['course']
+        year_number = parsed['year_number']
+        section = parsed.get('section', '')
+        batch_year = parsed.get('batch_year')
+        class_name = parsed['class_name']
 
-    class_obj, _ = Class.objects.get_or_create(
-        name=parsed["class_name"],
-        defaults={"department": dept_obj}
-    )
-    if class_obj.department != dept_obj:
-        class_obj.department = dept_obj
-        class_obj.save()
+        class_obj, created = Class.objects.get_or_create(
+            course=course,
+            year_number=year_number,
+            section=section,
+            defaults={
+                'name': class_name,
+                'department': dept_obj,
+            }
+        )
+        if created or class_obj.department != dept_obj:
+            class_obj.department = dept_obj
+            class_obj.save()
 
-    user.department = dept_obj
-    user.class_name = class_obj
-    user.save(update_fields=list(set(update_fields)))
+        user.department = dept_obj
+        user.class_name = class_obj
+
+    else:
+        # Fallback path: no DB course found — use get_or_create with inferred dept/class
+        dept_code = parsed['department_code']
+        dept_name = parsed['department_name']
+        class_name = parsed['class_name']
+
+        dept_obj, _ = Department.objects.get_or_create(
+            code=dept_code,
+            defaults={'name': dept_name}
+        )
+        if dept_obj.name != dept_name:
+            dept_obj.name = dept_name
+            dept_obj.save()
+
+        class_obj, _ = Class.objects.get_or_create(
+            name=class_name,
+            defaults={'department': dept_obj}
+        )
+        if class_obj.department != dept_obj:
+            class_obj.department = dept_obj
+            class_obj.save()
+
+        user.department = dept_obj
+        user.class_name = class_obj
+
+    user.save(update_fields=list(update_fields))
     return user
 
 
@@ -763,44 +843,181 @@ class DepartmentListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        depts = list(Department.objects.all())
-        def dept_sort_key(d):
-            try:
-                return OFFICIAL_DEPT_ORDER.index(d.code)
-            except ValueError:
-                return 999
-        depts.sort(key=dept_sort_key)
-        return Response([
-            {"name": d.name, "code": d.code}
-            for d in depts
-        ])
+        depts = Department.objects.prefetch_related('courses', 'classes').all()
+        from .serializers import DepartmentSerializer
+        return Response(DepartmentSerializer(depts, many=True).data)
 
     def post(self, request):
         name = request.data.get('name')
         code = request.data.get('code')
+        email_prefix = request.data.get('email_prefix', '').strip().lower()
+        level = request.data.get('level', 'UG')
         if not name:
             return Response({"error": "name is required"}, status=status.HTTP_400_BAD_REQUEST)
         if not code:
             code = ''.join([w[0] for w in name.split()]).upper()[:5] or "DEPT"
 
-        dept, created = Department.objects.get_or_create(code=code, defaults={"name": name})
-        if not created and dept.name != name:
+        dept, created = Department.objects.get_or_create(
+            code=code,
+            defaults={"name": name, "email_prefix": email_prefix, "level": level}
+        )
+        if not created:
             dept.name = name
-            dept.save(update_fields=['name'])
-        return Response({"name": dept.name, "code": dept.code})
+            dept.email_prefix = email_prefix
+            dept.level = level
+            dept.save(update_fields=['name', 'email_prefix', 'level'])
+        from .serializers import DepartmentSerializer
+        return Response(DepartmentSerializer(dept).data, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
 
-    def delete(self, request):
-        code = request.data.get('code')
-        if not code:
-            return Response({"error": "code is required"}, status=status.HTTP_400_BAD_REQUEST)
-        Department.objects.filter(code=code).delete()
-        return Response({"success": True})
+
+class DepartmentDetailView(APIView):
+    """GET / PUT / DELETE a single Department by its integer pk."""
+    permission_classes = [AllowAny]
+
+    def _get_dept(self, pk):
+        try:
+            return Department.objects.prefetch_related('courses', 'classes').get(pk=pk)
+        except Department.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        dept = self._get_dept(pk)
+        if not dept:
+            return Response({"error": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
+        from .serializers import DepartmentSerializer
+        return Response(DepartmentSerializer(dept).data)
+
+    def put(self, request, pk):
+        dept = self._get_dept(pk)
+        if not dept:
+            return Response({"error": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
+        name = request.data.get('name', dept.name)
+        code = request.data.get('code', dept.code)
+        email_prefix = request.data.get('email_prefix', dept.email_prefix).strip().lower()
+        level = request.data.get('level', dept.level)
+        dept.name = name
+        dept.code = code
+        dept.email_prefix = email_prefix
+        dept.level = level
+        dept.save()
+        from .serializers import DepartmentSerializer
+        return Response(DepartmentSerializer(dept).data)
+
+    def delete(self, request, pk):
+        dept = self._get_dept(pk)
+        if not dept:
+            return Response({"error": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
+        course_count = dept.courses.count()
+        class_count = dept.classes.count()
+        dept.delete()
+        return Response({"success": True, "deleted_courses": course_count, "deleted_classes": class_count})
+
+
+class CourseListView(APIView):
+    """List all courses, or create a new course under a department."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        dept_id = request.query_params.get('department')
+        qs = Course.objects.select_related('department').all()
+        if dept_id:
+            qs = qs.filter(department_id=dept_id)
+        from .serializers import CourseSerializer
+        return Response(CourseSerializer(qs, many=True).data)
+
+    def post(self, request):
+        dept_id = request.data.get('department')
+        name = request.data.get('name', '').strip()
+        abbreviation = request.data.get('abbreviation', '').strip().upper()
+        email_code = request.data.get('email_code', '').strip().lower()
+        is_multi_batch = request.data.get('is_multi_batch', False)
+        duration_years = request.data.get('duration_years', 2)
+
+        if not dept_id or not name or not abbreviation or not email_code:
+            return Response(
+                {"error": "department, name, abbreviation, and email_code are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            dept = Department.objects.get(pk=dept_id)
+        except Department.DoesNotExist:
+            return Response({"error": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if Course.objects.filter(department=dept, email_code=email_code).exists():
+            return Response(
+                {"error": f"A course with email_code '{email_code}' already exists in this department."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        course = Course.objects.create(
+            department=dept,
+            name=name,
+            abbreviation=abbreviation,
+            email_code=email_code,
+            is_multi_batch=bool(is_multi_batch),
+            duration_years=int(duration_years),
+        )
+        from .serializers import CourseSerializer
+        return Response(CourseSerializer(course).data, status=status.HTTP_201_CREATED)
+
+
+class CourseDetailView(APIView):
+    """GET / PUT / DELETE a single Course by pk."""
+    permission_classes = [AllowAny]
+
+    def _get_course(self, pk):
+        try:
+            return Course.objects.select_related('department').get(pk=pk)
+        except Course.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        course = self._get_course(pk)
+        if not course:
+            return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+        from .serializers import CourseSerializer
+        return Response(CourseSerializer(course).data)
+
+    def put(self, request, pk):
+        course = self._get_course(pk)
+        if not course:
+            return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+        course.name = request.data.get('name', course.name)
+        course.abbreviation = request.data.get('abbreviation', course.abbreviation).upper()
+        course.email_code = request.data.get('email_code', course.email_code).lower()
+        course.is_multi_batch = request.data.get('is_multi_batch', course.is_multi_batch)
+        course.duration_years = int(request.data.get('duration_years', course.duration_years))
+        if 'department' in request.data:
+            try:
+                course.department = Department.objects.get(pk=request.data['department'])
+            except Department.DoesNotExist:
+                return Response({"error": "Department not found"}, status=status.HTTP_404_NOT_FOUND)
+        course.save()
+        from .serializers import CourseSerializer
+        return Response(CourseSerializer(course).data)
+
+    def delete(self, request, pk):
+        course = self._get_course(pk)
+        if not course:
+            return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+        class_count = course.classes.count()
+        course.delete()
+        return Response({"success": True, "deleted_classes": class_count})
+
 
 class ClassListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        classes = list(Class.objects.select_related('department', 'class_teacher', 'dqc_member').all())
+        dept_id = request.query_params.get('department')
+        course_id = request.query_params.get('course')
+        qs = Class.objects.select_related('department', 'course', 'class_teacher', 'dqc_member').all()
+        if dept_id:
+            qs = qs.filter(department_id=dept_id)
+        if course_id:
+            qs = qs.filter(course_id=course_id)
+        classes = list(qs)
+
         def class_sort_key(c):
             dept_idx = 999
             if c.department and c.department.code in OFFICIAL_DEPT_ORDER:
@@ -817,6 +1034,12 @@ class ClassListView(APIView):
                 "name": c.name,
                 "department": c.department.name,
                 "department_code": c.department.code,
+                "course": c.course.id if c.course else None,
+                "course_name": c.course.name if c.course else None,
+                "course_abbreviation": c.course.abbreviation if c.course else None,
+                "year_number": c.year_number,
+                "section": c.section,
+                "batch_start_year": c.batch_start_year,
                 "classTeacher": c.class_teacher.email if c.class_teacher else None,
                 "classTeacherName": c.class_teacher.get_full_name() or c.class_teacher.username if c.class_teacher else None,
                 "dqcMember": c.dqc_member.email if c.dqc_member else None,
@@ -828,27 +1051,66 @@ class ClassListView(APIView):
         ])
 
     def post(self, request):
-        name = request.data.get('name')
+        """Create a new class. Accepts either dept_code (legacy) or course_id + year_number + section."""
+        course_id = request.data.get('course_id')
         dept_code = request.data.get('department_code')
-        if not name or not dept_code:
-            return Response({"error": "name and department_code are required"}, status=status.HTTP_400_BAD_REQUEST)
+        name = request.data.get('name', '').strip()
+        year_number = request.data.get('year_number')
+        section = request.data.get('section', '').strip().upper()
+        batch_start_year = request.data.get('batch_start_year')
 
-        try:
-            dept = Department.objects.get(code=dept_code)
-        except Department.DoesNotExist:
-            return Response({"error": f"Department '{dept_code}' not found"}, status=status.HTTP_404_NOT_FOUND)
+        if course_id:
+            try:
+                course = Course.objects.select_related('department').get(pk=course_id)
+            except Course.DoesNotExist:
+                return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+            dept = course.department
+            if not year_number:
+                return Response({"error": "year_number is required when course_id is provided"}, status=status.HTTP_400_BAD_REQUEST)
+            year_number = int(year_number)
+            roman_map = {1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'VI'}
+            year_roman = roman_map.get(year_number, str(year_number))
+            if section:
+                generated_name = f"{year_roman} {course.abbreviation} {section}"
+            else:
+                generated_name = f"{year_roman} {course.abbreviation}"
+            name = name or generated_name
 
-        cls, created = Class.objects.get_or_create(name=name, defaults={"department": dept})
-        if not created and cls.department != dept:
-            cls.department = dept
-            cls.save(update_fields=['department'])
-            
+            if Class.objects.filter(course=course, year_number=year_number, section=section).exists():
+                return Response(
+                    {"error": f"Class '{name}' already exists for this course."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            cls = Class.objects.create(
+                name=name,
+                department=dept,
+                course=course,
+                year_number=year_number,
+                section=section,
+                batch_start_year=int(batch_start_year) if batch_start_year else None,
+            )
+        else:
+            # Legacy: dept_code + name only
+            if not name or not dept_code:
+                return Response({"error": "name and department_code are required"}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                dept = Department.objects.get(code=dept_code)
+            except Department.DoesNotExist:
+                return Response({"error": f"Department '{dept_code}' not found"}, status=status.HTTP_404_NOT_FOUND)
+            cls, _ = Class.objects.get_or_create(name=name, defaults={"department": dept})
+
         return Response({
             "id": cls.id,
             "name": cls.name,
             "department": cls.department.name,
-            "department_code": cls.department.code
-        })
+            "department_code": cls.department.code,
+            "course": cls.course.id if cls.course else None,
+            "year_number": cls.year_number,
+            "section": cls.section,
+            "batch_start_year": cls.batch_start_year,
+        }, status=status.HTTP_201_CREATED)
+
 
     def put(self, request):
         name = request.data.get('name')
@@ -934,31 +1196,52 @@ class ClassListView(APIView):
 
 
 class ClassDetailView(APIView):
-    """GET and PATCH a single Class by primary key.
-    Supports updating num_students and negative_points for mark moderation.
-    """
+    """GET / PATCH / PUT / DELETE a single Class by primary key."""
     permission_classes = [AllowAny]
 
-    def get(self, request, pk):
+    def _get_cls(self, pk):
         try:
-            cls = Class.objects.select_related('department', 'class_teacher', 'dqc_member').get(pk=pk)
+            return Class.objects.select_related('department', 'course', 'class_teacher', 'dqc_member').get(pk=pk)
         except Class.DoesNotExist:
-            return Response({"error": "Class not found"}, status=status.HTTP_404_NOT_FOUND)
-        return Response({
+            return None
+
+    def _serialize_class(self, cls):
+        return {
             "id": cls.id,
             "name": cls.name,
-            "department": cls.department.name,
-            "department_code": cls.department.code,
+            "department": cls.department.name if cls.department else None,
+            "department_code": cls.department.code if cls.department else None,
+            "course": cls.course.id if cls.course else None,
+            "course_name": cls.course.name if cls.course else None,
+            "course_abbreviation": cls.course.abbreviation if cls.course else None,
+            "year_number": cls.year_number,
+            "section": cls.section,
+            "batch_start_year": cls.batch_start_year,
             "classTeacher": cls.class_teacher.email if cls.class_teacher else None,
+            "classTeacherName": cls.class_teacher.get_full_name() or cls.class_teacher.username if cls.class_teacher else None,
             "dqcMember": cls.dqc_member.email if cls.dqc_member else None,
+            "dqcMemberName": cls.dqc_member.get_full_name() or cls.dqc_member.username if cls.dqc_member else None,
             "num_students": cls.num_students,
             "negative_points": cls.negative_points,
-        })
+        }
+
+    def get(self, request, pk):
+        cls = self._get_cls(pk)
+        if not cls:
+            return Response({"error": "Class not found"}, status=status.HTTP_404_NOT_FOUND)
+        return Response(self._serialize_class(cls))
+
+    def delete(self, request, pk):
+        cls = self._get_cls(pk)
+        if not cls:
+            return Response({"error": "Class not found"}, status=status.HTTP_404_NOT_FOUND)
+        class_name = cls.name
+        cls.delete()
+        return Response({"success": True, "deleted": class_name})
 
     def patch(self, request, pk):
-        try:
-            cls = Class.objects.get(pk=pk)
-        except Class.DoesNotExist:
+        cls = self._get_cls(pk)
+        if not cls:
             return Response({"error": "Class not found"}, status=status.HTTP_404_NOT_FOUND)
 
         update_fields = []
@@ -974,16 +1257,111 @@ class ClassDetailView(APIView):
                 update_fields.append('negative_points')
             except (ValueError, TypeError):
                 return Response({"error": "negative_points must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+        if 'name' in request.data:
+            cls.name = request.data['name']
+            update_fields.append('name')
+        if 'year_number' in request.data:
+            cls.year_number = int(request.data['year_number'])
+            update_fields.append('year_number')
+        if 'section' in request.data:
+            cls.section = request.data['section'].strip().upper()
+            update_fields.append('section')
+        if 'batch_start_year' in request.data:
+            cls.batch_start_year = int(request.data['batch_start_year']) if request.data['batch_start_year'] else None
+            update_fields.append('batch_start_year')
 
         if update_fields:
             cls.save(update_fields=update_fields)
+        return Response(self._serialize_class(cls))
 
-        return Response({
-            "id": cls.id,
-            "name": cls.name,
-            "num_students": cls.num_students,
-            "negative_points": cls.negative_points,
-        })
+    def put(self, request, pk):
+        """Full update — handles class_teacher, dqcMember, and all moderation fields."""
+        cls = self._get_cls(pk)
+        if not cls:
+            return Response({"error": "Class not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        teacher_email = request.data.get('classTeacher')
+        dqc_email = request.data.get('dqcMember')
+
+        if teacher_email is not None:
+            if teacher_email == "":
+                if cls.class_teacher:
+                    old_teacher = cls.class_teacher
+                    cls.class_teacher = None
+                    if not Class.objects.filter(class_teacher=old_teacher).exclude(id=cls.id).exists():
+                        old_teacher.class_name = None
+                        old_teacher.save(update_fields=['class_name'])
+            else:
+                try:
+                    teacher = User.objects.get(email=teacher_email)
+                    other_class = Class.objects.filter(class_teacher=teacher).exclude(id=cls.id).first()
+                    if other_class:
+                        return Response(
+                            {"error": f"Faculty '{teacher.get_full_name() or teacher_email}' is already assigned as Class Advisor to '{other_class.name}'."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if cls.class_teacher and cls.class_teacher != teacher:
+                        old_teacher = cls.class_teacher
+                        if not Class.objects.filter(class_teacher=old_teacher).exclude(id=cls.id).exists():
+                            old_teacher.class_name = None
+                            old_teacher.save(update_fields=['class_name'])
+                    cls.class_teacher = teacher
+                    teacher.class_name = cls
+                    teacher.department = cls.department
+                    teacher.save(update_fields=['class_name', 'department'])
+                except User.DoesNotExist:
+                    return Response({"error": f"Teacher with email '{teacher_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if dqc_email is not None:
+            if dqc_email == "":
+                cls.dqc_member = None
+            else:
+                try:
+                    student = User.objects.get(email=dqc_email)
+                    other_class = Class.objects.filter(dqc_member=student).exclude(id=cls.id).first()
+                    if other_class:
+                        return Response(
+                            {"error": f"Student '{student.get_full_name() or dqc_email}' is already assigned as DQC Representative to '{other_class.name}'."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if student.class_name and student.class_name.name != cls.name:
+                        return Response(
+                            {"error": f"Student '{student.get_full_name() or dqc_email}' belongs to '{student.class_name.name}' and cannot be assigned to '{cls.name}'."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    cls.dqc_member = student
+                    student.is_student_rep = True
+                    student.save(update_fields=['is_student_rep'])
+                except User.DoesNotExist:
+                    return Response({"error": f"Student with email '{dqc_email}' not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        if 'num_students' in request.data:
+            try:
+                cls.num_students = int(request.data['num_students'])
+            except (ValueError, TypeError):
+                return Response({"error": "num_students must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
+        if 'negative_points' in request.data:
+            try:
+                cls.negative_points = float(request.data['negative_points'])
+            except (ValueError, TypeError):
+                return Response({"error": "negative_points must be a number"}, status=status.HTTP_400_BAD_REQUEST)
+        if 'name' in request.data:
+            cls.name = request.data['name']
+        if 'year_number' in request.data:
+            cls.year_number = int(request.data['year_number'])
+        if 'section' in request.data:
+            cls.section = request.data['section'].strip().upper()
+        if 'batch_start_year' in request.data:
+            cls.batch_start_year = int(request.data['batch_start_year']) if request.data['batch_start_year'] else None
+        if 'course' in request.data:
+            try:
+                cls.course = Course.objects.get(pk=request.data['course'])
+            except Course.DoesNotExist:
+                return Response({"error": "Course not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        cls.save()
+        return Response(self._serialize_class(cls))
+
 
 
 class ClassIndexView(APIView):
@@ -1139,6 +1517,116 @@ class UserManagementView(APIView):
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
 
+def get_criteria_allowed_bounds(criteria_item, evidence=None):
+    """
+    Computes (allowed_min, allowed_max, details) for a given CriteriaItem based on:
+    1. Dynamic subItems in rules_json (e.g. Publications, Patents, Book Publications, Prizes, etc.)
+    2. Academic grade rules in rules_json (e.g. Class Pass Percentage)
+    3. Count multipliers for count-based criteria
+    4. Associated CriteriaRule bounds (minimum_marks, maximum_marks, is_negative)
+    """
+    if not criteria_item:
+        return 0.0, 100.0, ""
+
+    ev = evidence
+    if isinstance(ev, str):
+        try:
+            import json
+            ev = json.loads(ev)
+        except Exception:
+            ev = {}
+    elif not isinstance(ev, dict):
+        ev = {}
+
+    rule = CriteriaRule.objects.filter(item=criteria_item).first()
+    
+    # Base mark calculation
+    base_mark = float(criteria_item.marks or 0.0)
+    details = ""
+
+    # 1. SubItems mapping in rules_json (Publications, Patents, Book Publications, Prizes, etc.)
+    sub_items = None
+    if isinstance(criteria_item.rules_json, dict) and 'subItems' in criteria_item.rules_json:
+        sub_items = criteria_item.rules_json.get('subItems')
+
+    if isinstance(sub_items, dict) and len(sub_items) > 0:
+        submitted_sub_item = (
+            ev.get('subItem') or 
+            ev.get('researchSubItem') or 
+            ev.get('prizesSubItem')
+        )
+        matched_val = None
+        if submitted_sub_item:
+            # Check exact match
+            if submitted_sub_item in sub_items:
+                matched_val = float(sub_items[submitted_sub_item])
+                details = f" (subcategory '{submitted_sub_item}': {matched_val})"
+            else:
+                # Case-insensitive / trimmed match
+                sub_norm = str(submitted_sub_item).strip().lower()
+                for k, v in sub_items.items():
+                    if str(k).strip().lower() == sub_norm:
+                        matched_val = float(v)
+                        details = f" (subcategory '{k}': {matched_val})"
+                        break
+        
+        if matched_val is not None:
+            base_mark = matched_val
+        else:
+            # Fallback to maximum mark among defined subItems if specific sub-item not identified
+            base_mark = float(max(sub_items.values()))
+            details = f" (max subcategory: {base_mark})"
+
+    # 2. Count multiplier for count-based items
+    count_val = 1
+    if criteria_item.type == 'count' or 'count' in ev:
+        try:
+            count_val = max(1, int(ev.get('count', 1)))
+        except (ValueError, TypeError):
+            count_val = 1
+
+    allowed_max = base_mark * count_val
+
+    # 3. Dynamic handling for Academic Grades
+    if criteria_item.type == 'academic_grades' or (
+        isinstance(criteria_item.rules_json, dict) and 'pass_percentage_ranges' in criteria_item.rules_json
+    ):
+        rules = criteria_item.rules_json or {}
+        m90 = float(rules.get('90_above', 5.0))
+        m80 = float(rules.get('80_90', 4.0))
+        m70 = float(rules.get('70_80', 3.0))
+        ranges = rules.get('pass_percentage_ranges', [])
+        max_pass_mark = max([float(r.get('marks', 0)) for r in ranges], default=5.0) if ranges else 5.0
+        
+        total_students = 100
+        try:
+            total_students = max(1, int(ev.get('totalStudents', 100)))
+        except (ValueError, TypeError):
+            total_students = 100
+        allowed_max = (total_students * max(m90, m80, m70)) + max_pass_mark
+        details = " (academic grades breakdown)"
+
+    # 4. CriteriaRule overrides/caps
+    allowed_min = 0.0
+    is_negative = (criteria_item.type in ('negative', 'academic_grades')) or (rule and rule.is_negative)
+    if rule:
+        if rule.maximum_marks is not None:
+            rule_max = float(rule.maximum_marks)
+            if allowed_max > 0:
+                allowed_max = min(allowed_max, rule_max)
+            else:
+                allowed_max = rule_max
+        if rule.minimum_marks is not None:
+            allowed_min = float(rule.minimum_marks)
+        if rule.is_negative:
+            is_negative = True
+
+    if is_negative and allowed_min == 0.0:
+        allowed_min = -1000.0
+
+    return allowed_min, allowed_max, details
+
+
 class SubmissionListView(APIView):
     permission_classes = [AllowAny]
 
@@ -1202,6 +1690,32 @@ class SubmissionListView(APIView):
         status_val = request.data.get('status', 'Pending Verification')
         remarks = request.data.get('remarks', '')
         marks = request.data.get('marks')
+        if marks is not None and user and getattr(user, 'role', None) == 'student':
+            marks = None
+        elif marks is not None:
+            try:
+                req_marks = float(marks)
+                criteria_item = CriteriaItem.objects.filter(pk=criteria_id).first()
+                if criteria_item:
+                    allowed_min, allowed_max, details = get_criteria_allowed_bounds(criteria_item, evidence)
+                    is_negative = (criteria_item.type in ('negative', 'academic_grades')) or (allowed_min < 0)
+                    if req_marks < 0 and not is_negative:
+                        return Response(
+                            {"error": f"Score ({req_marks}) cannot be negative for non-penalty criteria."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if req_marks > (allowed_max + 1e-5):
+                        return Response(
+                            {"error": f"Requested score ({req_marks}) exceeds the maximum allowed limit ({allowed_max}) for criteria '{criteria_item.title}'{details}."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+                    if allowed_min is not None and req_marks < (allowed_min - 1e-5):
+                        return Response(
+                            {"error": f"Requested score ({req_marks}) is below the minimum allowed limit ({allowed_min}) for criteria '{criteria_item.title}'."},
+                            status=status.HTTP_400_BAD_REQUEST
+                        )
+            except (ValueError, TypeError):
+                return Response({"error": "Invalid marks value provided."}, status=status.HTTP_400_BAD_REQUEST)
         proof = request.data.get('proof', '')
         event_id = request.data.get('eventId', '')
         evidence = request.data.get('evidence')
@@ -1533,20 +2047,23 @@ class SubmissionDetailView(APIView):
 
             criteria_item = CriteriaItem.objects.filter(pk=target_criteria_id).first()
             if criteria_item:
-                allowed_max = criteria_item.marks
-                rule = CriteriaRule.objects.filter(item=criteria_item).first()
-                if rule and rule.maximum_marks is not None:
-                    allowed_max = rule.maximum_marks
+                target_ev = request.data.get('evidence', submission.evidence)
+                allowed_min, allowed_max, details = get_criteria_allowed_bounds(criteria_item, target_ev)
 
-                is_negative = (criteria_item.type == 'negative') or (rule and rule.is_negative)
+                is_negative = (criteria_item.type in ('negative', 'academic_grades')) or (allowed_min < 0)
                 if req_marks < 0 and not is_negative:
                     return Response(
                         {"error": f"Score ({req_marks}) cannot be negative for non-penalty criteria."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                if req_marks > allowed_max:
+                if req_marks > (allowed_max + 1e-5):
                     return Response(
-                        {"error": f"Requested score ({req_marks}) exceeds the maximum allowed limit ({allowed_max}) for criteria '{criteria_item.title}'."},
+                        {"error": f"Requested score ({req_marks}) exceeds the maximum allowed limit ({allowed_max}) for criteria '{criteria_item.title}'{details}."},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                if allowed_min is not None and req_marks < (allowed_min - 1e-5):
+                    return Response(
+                        {"error": f"Requested score ({req_marks}) is below the minimum allowed limit ({allowed_min}) for criteria '{criteria_item.title}'."},
                         status=status.HTTP_400_BAD_REQUEST
                     )
 

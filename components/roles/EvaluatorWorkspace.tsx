@@ -107,8 +107,18 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
       const submittedSubItem = ev.subItem || ev.researchSubItem || ev.prizesSubItem;
       if (submittedSubItem) {
          const mapping = item.rules_json.subItems;
-         if (mapping[submittedSubItem] !== undefined) {
-             calculatedMarks = mapping[submittedSubItem];
+         let matchedVal = mapping[submittedSubItem];
+         if (matchedVal === undefined) {
+           const subNorm = String(submittedSubItem).trim().toLowerCase();
+           for (const [k, v] of Object.entries(mapping)) {
+             if (k.trim().toLowerCase() === subNorm) {
+               matchedVal = v as number;
+               break;
+             }
+           }
+         }
+         if (matchedVal !== undefined) {
+             calculatedMarks = Number(matchedVal);
              
              // Check if it's count-based as well (e.g. multiple publications of same type)
              if (item.type === 'count') {
@@ -138,10 +148,42 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
     alert(`Submission successfully verified and assigned ${calculatedMarks} marks!`);
   };
 
-  // --- REAL DATA BINDINGS ---
+  const getSubmissionMarks = (s: any) => {
+    if (s.marks !== null && s.marks !== undefined && !isNaN(Number(s.marks))) {
+      return Number(s.marks);
+    }
+    const item = criteriaCatalog.flatMap(c => c.items).find(it => String(it.id) === String(s.criteriaId));
+    if (!item) return 0;
+    if (item.rules_json && item.rules_json.subItems) {
+      const ev = (s.evidence as any) || {};
+      const submittedSubItem = ev.subItem || ev.researchSubItem || ev.prizesSubItem;
+      if (submittedSubItem) {
+        const mapping = item.rules_json.subItems;
+        let matchedVal = mapping[submittedSubItem];
+        if (matchedVal === undefined) {
+          const subNorm = String(submittedSubItem).trim().toLowerCase();
+          for (const [k, v] of Object.entries(mapping)) {
+            if (k.trim().toLowerCase() === subNorm) {
+              matchedVal = v as number;
+              break;
+            }
+          }
+        }
+        if (matchedVal !== undefined) {
+          const count = item.type === 'count' ? (Number(ev.count) || 1) : 1;
+          return Number(matchedVal) * count;
+        }
+      }
+    }
+    const count = item.type === 'count' ? (Number((s.evidence as any)?.count) || 1) : 1;
+    return (item.marks || 0) * count;
+  };
+
+  // Metrics
   const assignedSubmissions = submissions.filter(s => isAssignedToEvaluator(s));
   const totalSubmissionsCount = submissions.length;
-  const verifiedSubmissions = submissions.filter(s => ['Approved', 'Verified', 'Evaluated', 'Locked'].includes(s.status) && isAssignedToEvaluator(s));
+  const verifiedSubmissions = submissions.filter(s => (s.status === 'Locked' || s.evaluatorVerified) && isAssignedToEvaluator(s));
+  
   const verifiedCount = verifiedSubmissions.length;
   const pendingCount = teacherApprovedSubmissions.length;
   const rejectedCount = submissions.filter(s => (s.status === 'Rejected' || (s.status as string) === 'Disapproved') && isAssignedToEvaluator(s)).length;
@@ -152,8 +194,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
   const getPct = (cnt: number) => totalEvaluatedDomainCount > 0 ? ((cnt / totalEvaluatedDomainCount) * 100).toFixed(1) : '0.0';
   
   const totalScore = verifiedSubmissions.reduce((sum, s) => {
-    const item = criteriaCatalog.flatMap(c => c.items).find(it => String(it.id) === String(s.criteriaId));
-    return sum + (s.marks || item?.marks || 0);
+    return sum + getSubmissionMarks(s);
   }, 0);
 
   const lockedList = submissions.filter(s => (s.status === 'Locked' || s.evaluatorVerified) && isAssignedToEvaluator(s)).map(s => {
@@ -166,7 +207,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
       category: cat?.category || 'Unknown',
       item: item?.title || 'Unknown',
       status: s.status,
-      marks: s.marks || item?.marks || 0,
+      marks: getSubmissionMarks(s),
       dept: getStudentDept(student, s)
     };
   });
@@ -176,8 +217,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
   verifiedSubmissions.forEach(s => {
     const student = students.find(st => st.id === s.studentId);
     if (!student) return;
-    const item = criteriaCatalog.flatMap(c => c.items).find(it => String(it.id) === String(s.criteriaId));
-    const marks = s.marks || item?.marks || 0;
+    const marks = getSubmissionMarks(s);
     
     if (!studentsMap.has(student.id)) {
       studentsMap.set(student.id, {
@@ -841,7 +881,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
                                 </div>
 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                                  <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-primary)' }}>{(sub.marks || itemObj?.marks || 0).toFixed(1)} pts</span>
+                                  <span style={{ fontSize: '0.9rem', fontWeight: 800, color: 'var(--color-primary)' }}>{getSubmissionMarks(sub).toFixed(1)} pts</span>
                                   {activeTab === 'pending' && (
                                     <button
                                       className="btn btn-sm btn-primary"

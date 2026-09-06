@@ -12,17 +12,53 @@ class AcademicYear(models.Model):
         return f"{self.year} {'(Active)' if self.is_active else ''}"
 
 class Department(models.Model):
+    LEVEL_CHOICES = [
+        ('UG', 'Under-Graduate'),
+        ('PG', 'Post-Graduate'),
+        ('Professional', 'Professional'),
+        ('Other', 'Other'),
+    ]
     name = models.CharField(max_length=100, unique=True)
-    code = models.CharField(max_length=20, unique=True) # e.g. MCA, CS, IQAC, ADMIN
+    code = models.CharField(max_length=20, unique=True) # e.g. PGDCA, UGDCA
+    # Email prefix: the single character that appears after the batch year in student emails
+    # e.g. 'p' for PG (amal.25pmc114), 'u' for UG (santhosh.25ubc214)
+    email_prefix = models.CharField(max_length=5, blank=True, default='')  # 'u', 'p'
+    level = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='UG')
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
         return f"{self.name} ({self.code})"
 
+
+class Course(models.Model):
+    """A course offered by a department (e.g. MCA, BCA, BBA).
+    Each course carries the 2-char email_code that appears in student emails.
+    e.g. 'mc' for MCA (amal.25pmc114), 'bc' for BCA (santhosh.25ubc214)
+    """
+    department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='courses')
+    name = models.CharField(max_length=150)           # 'Master of Computer Applications'
+    abbreviation = models.CharField(max_length=20)    # 'MCA'
+    email_code = models.CharField(max_length=10)      # 'mc' — matches chars 3-4 in email code part
+    is_multi_batch = models.BooleanField(default=False)  # True = multiple sections A/B/C
+    duration_years = models.IntegerField(default=2)   # 2 for MCA, 3 for BCA
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [('department', 'email_code')]
+
+    def __str__(self):
+        return f"{self.abbreviation} ({self.department.code})"
+
 class Class(models.Model):
-    name = models.CharField(max_length=100, unique=True) # e.g. BCA A, BSc CS B, MCA
+    name = models.CharField(max_length=100, unique=True) # e.g. BCA A, BSc CS B, II MCA
     department = models.ForeignKey(Department, on_delete=models.CASCADE, related_name='classes')
+    # Link to the structured Course (null for legacy/manually created classes)
+    course = models.ForeignKey('Course', on_delete=models.SET_NULL, null=True, blank=True, related_name='classes')
+    year_number = models.IntegerField(null=True, blank=True)   # 1=I, 2=II, 3=III
+    section = models.CharField(max_length=5, blank=True, default='')  # 'A', 'B', '' for single-batch
+    batch_start_year = models.IntegerField(null=True, blank=True)  # e.g. 2025
     class_teacher = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='advisor_classes')
     dqc_member = models.ForeignKey('User', on_delete=models.SET_NULL, null=True, blank=True, related_name='rep_classes')
     # Mark moderation fields
@@ -61,6 +97,9 @@ class User(AbstractUser):
         null=True,
         blank=True
     )
+    # Student-specific parsed fields from email
+    roll_number = models.IntegerField(null=True, blank=True)   # e.g. 14 (from 114 → strip series prefix)
+    batch_year = models.IntegerField(null=True, blank=True)    # e.g. 2025
 
     # Use email as the username field for authentication
     USERNAME_FIELD = 'email'

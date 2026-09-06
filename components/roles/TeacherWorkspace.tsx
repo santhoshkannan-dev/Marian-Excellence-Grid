@@ -138,11 +138,41 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
   const totalSubmissionsDisplay = classSubmissions.length.toString();
   const verifiedDisplay = classSubmissions.filter(s => ['Approved', 'Verified', 'Evaluated', 'Locked'].includes(s.status)).length.toString();
   
+  const getSubmissionPoints = (s: Submission) => {
+    if (s.marks !== null && s.marks !== undefined && !isNaN(Number(s.marks))) {
+      return Number(s.marks);
+    }
+    const criteriaItem = criteriaCatalog.flatMap((c) => c.items).find((it) => String(it.id) === String(s.criteriaId));
+    if (!criteriaItem) return 0;
+    if (criteriaItem.rules_json && criteriaItem.rules_json.subItems) {
+      const ev = (s.evidence as any) || {};
+      const subKey = ev.subItem || ev.researchSubItem || ev.prizesSubItem;
+      if (subKey) {
+        const mapping = criteriaItem.rules_json.subItems;
+        let matchedVal = mapping[subKey];
+        if (matchedVal === undefined) {
+          const subNorm = String(subKey).trim().toLowerCase();
+          for (const [k, v] of Object.entries(mapping)) {
+            if (k.trim().toLowerCase() === subNorm) {
+              matchedVal = v as number;
+              break;
+            }
+          }
+        }
+        if (matchedVal !== undefined) {
+          const count = criteriaItem.type === 'count' ? (Number(ev.count) || 1) : 1;
+          return Number(matchedVal) * count;
+        }
+      }
+    }
+    const count = criteriaItem.type === 'count' ? (Number((s.evidence as any)?.count) || 1) : 1;
+    return (criteriaItem.marks || 0) * count;
+  };
+
   // Calculate total points earned by class vs target
   const classTotalScore = classSubmissions.reduce((sum, s) => {
     if (['Approved', 'Verified', 'Evaluated', 'Locked'].includes(s.status)) {
-      const criteriaItem = criteriaCatalog.flatMap((c) => c.items).find((it) => String(it.id) === String(s.criteriaId));
-      return sum + (criteriaItem?.marks || 0);
+      return sum + getSubmissionPoints(s);
     }
     return sum;
   }, 0);
@@ -197,8 +227,7 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
   let displayProgressStudents = classStudents.map(student => {
     const studentSubs = classSubmissions.filter(s => s.studentId === student.id);
     const verifiedPoints = studentSubs.filter(s => ['Approved', 'Verified', 'Evaluated', 'Locked'].includes(s.status)).reduce((sum, s) => {
-       const criteriaItem = criteriaCatalog.flatMap((c) => c.items).find((it) => String(it.id) === String(s.criteriaId));
-       return sum + (criteriaItem?.marks || 0);
+       return sum + getSubmissionPoints(s);
     }, 0);
     const percent = Math.min(100, Math.round((verifiedPoints / 20) * 100)); // Target 20 per student
     const recentSub = studentSubs.length > 0 ? studentSubs[studentSubs.length - 1] : null;
@@ -271,7 +300,7 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
           activityTitle: criteriaItem?.title || s.description || 'Verified Claim',
           category: categoryItem?.category || 'Academics',
           description: s.description || 'Verified class evaluation claim submitted with valid institutional proof.',
-          marks: criteriaItem?.marks || 5,
+          marks: getSubmissionPoints(s) || (criteriaItem?.marks || 5),
           date: (s as any).date || '11 Aug 2026, 02:45 PM',
           subId: s.id
         };
