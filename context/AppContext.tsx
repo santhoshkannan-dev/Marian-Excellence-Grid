@@ -519,7 +519,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const data = await res.json();
       if (!res.ok) {
-        return { success: false, error: data.error || 'Authentication failed' };
+        const errMsg = data.error || 'Authentication failed';
+        toast.error(errMsg);
+        return { success: false, error: errMsg };
       }
 
       const feRole = mapBackendRoleToFrontend(data.user.role);
@@ -534,9 +536,13 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.setItem('bc_access_token', data.tokens.access);
       localStorage.setItem('bc_refresh_token', data.tokens.refresh);
 
+      toast.success(`Logged in successfully! Welcome, ${data.user.name || data.user.first_name || 'User'}`);
+
       return { success: true, user: data.user };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Connection to authentication server failed' };
+      const errMsg = err.message || 'Connection to authentication server failed';
+      toast.error(errMsg);
+      return { success: false, error: errMsg };
     }
   };
 
@@ -556,7 +562,9 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
       const data = await res.json();
       if (!res.ok) {
-        return { success: false, error: data.error || 'Bypass authentication failed' };
+        const errMsg = data.error || 'Bypass authentication failed';
+        toast.error(errMsg);
+        return { success: false, error: errMsg };
       }
 
       const feRole = mapBackendRoleToFrontend(data.user.role);
@@ -571,9 +579,13 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       localStorage.setItem('bc_access_token', data.tokens.access);
       localStorage.setItem('bc_refresh_token', data.tokens.refresh);
 
+      toast.success(`Logged in successfully as ${data.user.name || email}`);
+
       return { success: true, user: data.user };
     } catch (err: any) {
-      return { success: false, error: err.message || 'Connection to development authentication server failed' };
+      const errMsg = err.message || 'Connection to development authentication server failed';
+      toast.error(errMsg);
+      return { success: false, error: errMsg };
     }
   };
 
@@ -918,6 +930,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setCurrentUserInfo(null);
     localStorage.removeItem('bc_access_token');
     localStorage.removeItem('bc_refresh_token');
+
+    toast.info('Logged out successfully');
   };
 
   const setAcademicYear = (year: string) => {
