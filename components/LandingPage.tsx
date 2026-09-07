@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
+import { Champion } from '@/data/initialData';
 import { policyCategories, PolicyCategory } from './policyData';
 
 interface StandingItem {
@@ -118,6 +119,7 @@ export const LandingPage: React.FC = () => {
   const initialYear = availableYears.length > 0 ? availableYears[0] : '2025';
   
   const [activeYear, setActiveYear] = useState(initialYear);
+  const [championFilterCategory, setChampionFilterCategory] = useState<'All' | 'UG' | 'PG'>('All');
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const [selectedClass, setSelectedClass] = useState<StandingItem | null>(null);
   const scrollTrackRef = useRef<HTMLDivElement>(null);
@@ -448,38 +450,54 @@ export const LandingPage: React.FC = () => {
   // Achievements Auto Slide
   const [activeAchIndex, setActiveAchIndex] = useState(0);
 
-  // Champions Filter & Podium Reordering
-  const [selectedCategoryFilter, setSelectedCategoryFilter] = useState<'All' | 'UG' | 'PG'>('All');
-
-  const filteredChampions = React.useMemo(() => {
-    const rawList = championsData[activeYear] || [];
-    if (selectedCategoryFilter === 'All') return rawList;
-    return rawList.filter(c => (c.category || 'UG').toUpperCase() === selectedCategoryFilter.toUpperCase());
-  }, [championsData, activeYear, selectedCategoryFilter]);
+  const rawYearChampions = championsData[activeYear] || [];
 
   const currentChampions = React.useMemo(() => {
-    if (!filteredChampions || filteredChampions.length === 0) return [];
-    const top3Only = filteredChampions.filter(c => c.rank <= 3);
-    const sorted = [...top3Only].sort((a, b) => a.rank - b.rank);
-    if (sorted.length < 2) return sorted;
+    // 1. When filtering specifically by UG or PG:
+    // Apply 3-card Podium Order: [Rank 2 (Left), Rank 1 (Middle), Rank 3 (Right), ...others]
+    if (championFilterCategory === 'PG' || championFilterCategory === 'UG') {
+      const filtered = rawYearChampions.filter(
+        (c) => (c.category || 'UG').toUpperCase() === championFilterCategory.toUpperCase()
+      );
 
-    const rank1 = sorted.find(c => c.rank === 1);
-    const rank2 = sorted.find(c => c.rank === 2);
-    const rank3 = sorted.find(c => c.rank === 3);
+      const rank1 = filtered.find((c) => c.rank === 1);
+      const rank2 = filtered.find((c) => c.rank === 2);
+      const rank3 = filtered.find((c) => c.rank === 3);
+      const others = filtered.filter((c) => c.rank > 3);
 
-    const podium = [];
-    if (rank2) podium.push(rank2);
-    if (rank1) podium.push(rank1);
-    if (rank3) podium.push(rank3);
+      if (rank1 && (rank2 || rank3)) {
+        const podium: Champion[] = [];
+        if (rank2) podium.push(rank2); // 2nd Place on Left
+        podium.push(rank1);            // 1st Place in Middle
+        if (rank3) podium.push(rank3); // 3rd Place on Right
+        return [...podium, ...others];
+      }
 
-    return podium;
-  }, [filteredChampions]);
+      return [...filtered].sort((a, b) => a.rank - b.rank);
+    }
+
+    // 2. When "All Categories (UG & PG)" is selected:
+    // List ALL champions from both PG and UG without omitting anyone!
+    // Sort by rank (1st places first, 2nd next, 3rd next), then by category
+    return [...rawYearChampions].sort((a, b) => {
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      const catA = (a.category || 'UG').toUpperCase();
+      const catB = (b.category || 'UG').toUpperCase();
+      return catA.localeCompare(catB);
+    });
+  }, [rawYearChampions, championFilterCategory]);
 
   const carouselRef = useRef<HTMLDivElement>(null);
   const [isCarouselHovered, setIsCarouselHovered] = useState(false);
 
   useEffect(() => {
-    if (isCarouselHovered || currentChampions.length <= 1) return;
+    if (carouselRef.current) {
+      carouselRef.current.scrollTo({ left: 0, behavior: 'smooth' });
+    }
+  }, [activeYear, championFilterCategory]);
+
+  useEffect(() => {
+    if (isCarouselHovered || (championFilterCategory !== 'All' && currentChampions.length <= 3)) return;
     const interval = setInterval(() => {
       if (carouselRef.current) {
         const { scrollLeft, scrollWidth, clientWidth } = carouselRef.current;
@@ -491,7 +509,7 @@ export const LandingPage: React.FC = () => {
       }
     }, 3500);
     return () => clearInterval(interval);
-  }, [isCarouselHovered, currentChampions.length]);
+  }, [isCarouselHovered, currentChampions.length, championFilterCategory]);
 
   useEffect(() => {
     setIsLoaded(true);
@@ -1209,35 +1227,40 @@ export const LandingPage: React.FC = () => {
             </div>
 
             <div className="champions-header-right" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-              {/* Program Level Dropdown (PG / UG) */}
-              <select
-                className="champions-year-select"
-                value={selectedCategoryFilter}
-                onChange={(e) => setSelectedCategoryFilter(e.target.value as 'All' | 'UG' | 'PG')}
-                style={{
-                  border: '2px solid #3b82f6',
-                  background: '#eff6ff',
-                  color: '#1e40af',
-                  fontWeight: 800,
-                  boxShadow: '0 2px 8px rgba(59, 130, 246, 0.15)'
-                }}
-              >
-                <option value="All">All Programs (UG & PG)</option>
-                <option value="UG">UG (Undergraduate)</option>
-                <option value="PG">PG (Postgraduate)</option>
-              </select>
+              {/* PG / UG Filter Dropdown (like Admin Previous Champions Management) */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Filter Category:
+                </span>
+                <select
+                  className="champions-year-select"
+                  value={championFilterCategory}
+                  onChange={(e) => setChampionFilterCategory(e.target.value as 'All' | 'UG' | 'PG')}
+                  aria-label="Filter Champion Category"
+                >
+                  <option value="All">All Categories (UG & PG)</option>
+                  <option value="UG">UG (Undergraduate)</option>
+                  <option value="PG">PG (Postgraduate)</option>
+                </select>
+              </div>
 
-              {/* Year Select Dropdown */}
-              <select
-                className="champions-year-select"
-                value={activeYear}
-                onChange={(e) => setActiveYear(e.target.value)}
-              >
-                {availableYears.map(year => (
-                  <option key={year} value={year}>{year}</option>
-                ))}
-                {availableYears.length === 0 && <option value="2025">2025</option>}
-              </select>
+              {/* Academic Year Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  Year:
+                </span>
+                <select
+                  className="champions-year-select"
+                  value={activeYear}
+                  onChange={(e) => setActiveYear(e.target.value)}
+                  aria-label="Select Academic Year"
+                >
+                  {availableYears.map(year => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                  {availableYears.length === 0 && <option value="2025">2025</option>}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -1249,83 +1272,95 @@ export const LandingPage: React.FC = () => {
             style={{
               display: 'flex',
               gap: '24px',
-              padding: '32px 16px',
+              padding: '36px 16px 24px 16px',
               overflowX: 'auto',
               scrollSnapType: 'x mandatory',
               scrollBehavior: 'smooth',
               alignItems: 'flex-end',
-              justifyContent: currentChampions.length <= 3 ? 'center' : 'flex-start'
+              justifyContent: currentChampions.length <= 4 ? 'center' : 'flex-start'
             }}
           >
             {currentChampions.length === 0 ? (
-              <div style={{ padding: '30px', textAlign: 'center', width: '100%', color: 'var(--text-muted)', fontWeight: 600 }}>
-                No champion records found for {selectedCategoryFilter === 'All' ? 'the selected year' : `${selectedCategoryFilter} in ${activeYear}`}.
+              <div style={{
+                padding: '48px 24px',
+                textAlign: 'center',
+                width: '100%',
+                color: 'var(--text-muted)',
+                background: 'rgba(248, 250, 252, 0.85)',
+                borderRadius: '16px',
+                border: '1.5px dashed #cbd5e1',
+                margin: '8px 0'
+              }}>
+                <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>🏆</div>
+                <h4 style={{ fontWeight: 800, fontSize: '1rem', margin: '0 0 6px 0', color: 'var(--text-main)' }}>
+                  No {championFilterCategory === 'All' ? '' : `${championFilterCategory} `}champions recorded for {activeYear}
+                </h4>
+                <p style={{ fontSize: '0.84rem', margin: 0, color: 'var(--text-muted)' }}>
+                  Try switching to another category or academic year using the filters above.
+                </p>
               </div>
             ) : (
-              currentChampions.map((champ, idx) => {
-                const themeClass = champ.rank === 1 ? 'theme-gold rank-1' : champ.rank === 2 ? 'theme-platinum rank-2' : champ.rank === 3 ? 'theme-silver rank-3' : `rank-${champ.rank}`;
-                const iconSymbol = champ.rank === 1 ? '👑' : champ.rank === 2 ? '🥈' : champ.rank === 3 ? '🥉' : champ.rank;
-
-                return (
-                  <div
-                    key={idx}
-                    className={`champion-card ${themeClass}`}
-                    style={{
-                      minWidth: '280px',
-                      maxWidth: '300px',
-                      scrollSnapAlign: 'center',
-                      flexShrink: 0
-                    }}
-                  >
-                    <div className="card-top-row">
-                      <div className={`medal-badge rank-${champ.rank}`}>
-                        <div className="medal-circle">{iconSymbol}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <span style={{
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          fontSize: '0.7rem',
-                          fontWeight: 800,
-                          background: (champ.category || 'UG').toUpperCase() === 'PG' ? '#f3e8ff' : '#e0f2fe',
-                          color: (champ.category || 'UG').toUpperCase() === 'PG' ? '#7e22ce' : '#0369a1',
-                          border: `1px solid ${(champ.category || 'UG').toUpperCase() === 'PG' ? '#d8b4fe' : '#bae6fd'}`
-                        }}>
-                          {(champ.category || 'UG').toUpperCase()}
-                        </span>
-                        <div className={`rank-pill rank-${champ.rank}`}>
-                          {champ.rankLabel}
-                        </div>
+              currentChampions.map((champ, idx) => (
+                <div
+                  key={champ.id || idx}
+                  className={`champion-card rank-${champ.rank} ${champ.rank === 1 ? 'theme-gold' : champ.rank === 2 ? 'theme-platinum' : champ.rank === 3 ? 'theme-silver' : ''}`}
+                  style={{
+                    minWidth: '270px',
+                    maxWidth: '310px',
+                    flex: currentChampions.length <= 3 ? '1 1 270px' : '0 0 280px',
+                    scrollSnapAlign: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <div className="card-top-row">
+                    <div className={`medal-badge rank-${champ.rank}`}>
+                      <div className="medal-circle">
+                        {champ.rank === 1 ? '👑' : champ.rank === 2 ? '🥈' : champ.rank === 3 ? '🥉' : champ.rank}
                       </div>
                     </div>
-
-                    <div className="champion-avatar-frame">
-                      <img 
-                        src={champ.image?.startsWith('http') ? champ.image : (champ.image?.startsWith('/') ? `http://localhost:8000${champ.image}` : champ.image)} 
-                        alt={champ.teamName} 
-                        className="champion-avatar-img" 
-                        onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150'; }}
-                      />
-                    </div>
-
-                    <h3 className="champion-team-name">{champ.teamName}</h3>
-                    <div className="champion-event-name">{champ.eventName}</div>
-
-                    <div className={`champion-score-row rank-${champ.rank}`}>
-                      <span className="star-icon">★</span>
-                      <span>{champ.score}</span>
-                      <span className="score-max">/ 100</span>
-                    </div>
-
-                    <div className="champion-footer-pill">
-                      <div className="pill-item">
-                        <span>🏫 {champ.institution}</span>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <span style={{
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        fontSize: '0.72rem',
+                        fontWeight: 800,
+                        background: (champ.category || 'UG').toUpperCase() === 'PG' ? '#f3e8ff' : '#e0f2fe',
+                        color: (champ.category || 'UG').toUpperCase() === 'PG' ? '#7e22ce' : '#0369a1',
+                        border: `1px solid ${(champ.category || 'UG').toUpperCase() === 'PG' ? '#d8b4fe' : '#bae6fd'}`
+                      }}>
+                        {(champ.category || 'UG').toUpperCase()}
+                      </span>
+                      <div className={`rank-pill rank-${champ.rank}`}>
+                        {champ.rankLabel || (champ.rank === 1 ? '👑 CHAMPION' : champ.rank === 2 ? '🥈 RUNNER UP' : champ.rank === 3 ? '🥉 2ND RUNNER UP' : `RANK ${champ.rank}`)}
                       </div>
                     </div>
                   </div>
-                );
-              })
-            )}
+
+                <div className="champion-avatar-frame">
+                  <img 
+                    src={champ.image?.startsWith('http') ? champ.image : (champ.image?.startsWith('/') ? `http://localhost:8000${champ.image}` : `http://localhost:8000${champ.image}`)} 
+                    alt={champ.teamName} 
+                    className="champion-avatar-img" 
+                    onError={(e) => { (e.target as HTMLImageElement).src = 'https://via.placeholder.com/150'; }}
+                  />
+                </div>
+
+                <h3 className="champion-team-name">{champ.teamName}</h3>
+                <div className="champion-event-name">{champ.eventName || champ.institution || 'Marian Excellence Grid'}</div>
+
+                <div className={`champion-score-row rank-${champ.rank}`}>
+                  <span className="star-icon">★</span>
+                  <span>{champ.score}</span>
+                  <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 700, marginLeft: '4px' }}>pts</span>
+                </div>
+
+                <div className="champion-footer-pill">
+                  <div className="pill-item">
+                    <span>🏫 {champ.institution || 'Marian College'}</span>
+                  </div>
+                </div>
+              </div>
+            )))}
           </div>
 
           {/* Bottom Bar */}
