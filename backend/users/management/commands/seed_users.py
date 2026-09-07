@@ -222,7 +222,7 @@ class Command(BaseCommand):
                 "access_level": "student_rep_only",
                 "items": [
                     {
-                        "title": "Sem Result",
+                        "title": "Class Pass Percentage %",
                         "type": "academic_grades",
                         "marks": 0.0,
                         "rules_json": {

@@ -1371,7 +1371,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                         const label80 = countItems[1]?.title || '80% to 90%';
                         const label70 = countItems[2]?.title || '70% to 80%';
                         const labelFail = failItem?.title || 'Fail';
-                        const labelPass = passItem?.title || 'Class Pass Percentage %';
+                        const labelPass = 'Class Pass Percentage %';
 
                         return (
                           <>
@@ -1450,11 +1450,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 min={0}
                                 max={100}
                                 placeholder="0.00"
-                                value={passPercentage > 0 ? passPercentage : (
-                                  (count90Above + count80to90 + count70to80 + failCount) > 0
-                                    ? parseFloat(((((count90Above + count80to90 + count70to80) / (count90Above + count80to90 + count70to80 + failCount)) * 100)).toFixed(2))
-                                    : ''
-                                )}
+                                value={passPercentage === 0 ? '' : passPercentage}
                                 onFocus={(e) => e.target.select()}
                                 onChange={(e) => setPassPercentage(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
                                 required
