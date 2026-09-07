@@ -1346,61 +1346,6 @@ export const LandingPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 4. Top Performers Section */}
-        <div style={{ marginTop: '24px' }}>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '4px', textAlign: 'center' }}>Top Performers</h2>
-          <p className="muted" style={{ fontSize: '0.86rem', marginBottom: '20px', textAlign: 'center' }}>Outstanding contributors in the current standings cycle.</p>
-
-          <div className="top-performers-grid">
-            <div className="premium-card performer-card">
-              <span className="performer-role-badge">Top Student</span>
-              <div className="performer-avatar">🥇</div>
-              <div className="performer-name">Rahul S</div>
-              <div className="performer-context">BCA A • Applications</div>
-              <span className="performer-score">5 MOOCs Completed</span>
-            </div>
-
-            <div className="premium-card performer-card">
-              <span className="performer-role-badge">Best Mentor</span>
-              <div className="performer-avatar">👔</div>
-              <div className="performer-name">Dr. Jerome</div>
-              <div className="performer-context">Dept. of Computer Science</div>
-              <span className="performer-score" style={{ color: 'var(--primary)', background: 'rgba(99, 102, 241, 0.06)' }}>Active Support</span>
-            </div>
-
-            <div className="premium-card performer-card">
-              <span className="performer-role-badge">Most Active Class</span>
-              <div className="performer-avatar">⚡</div>
-              <div className="performer-name">BSc CS B</div>
-              <div className="performer-context">Computer Science</div>
-              <span className="performer-score" style={{ color: '#ec4899', background: 'rgba(236, 72, 153, 0.06)' }}>150+ Submissions</span>
-            </div>
-
-            <div className="premium-card performer-card">
-              <span className="performer-role-badge">Highest Research</span>
-              <div className="performer-avatar">🔬</div>
-              <div className="performer-name">BCom C</div>
-              <div className="performer-context">Commerce</div>
-              <span className="performer-score">3 UGC Publications</span>
-            </div>
-
-            <div className="premium-card performer-card">
-              <span className="performer-role-badge">Highest Internship</span>
-              <div className="performer-avatar">💼</div>
-              <div className="performer-name">BCA A</div>
-              <div className="performer-context">The Under-Graduate Department of Computer Applications</div>
-              <span className="performer-score">24 Placements</span>
-            </div>
-
-            <div className="premium-card performer-card">
-              <span className="performer-role-badge">Library Usage</span>
-              <div className="performer-avatar">📖</div>
-              <div className="performer-name">BA English A</div>
-              <div className="performer-context">English</div>
-              <span className="performer-score">180+ Borrows</span>
-            </div>
-          </div>
-        </div>
 
       </div>
     </div>
