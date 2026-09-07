@@ -322,6 +322,18 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
     ];
   }, [isPrizesCategory, currentItem]);
 
+  const dynamicSubItems = React.useMemo(() => {
+    if (currentItem?.rules_json?.subItems && typeof currentItem.rules_json.subItems === 'object') {
+      const keys = Object.keys(currentItem.rules_json.subItems);
+      if (keys.length > 0) return keys;
+    }
+    return [];
+  }, [currentItem]);
+
+  const itemCustomFields = React.useMemo(() => {
+    return currentItem?.rules_json?.fields || null;
+  }, [currentItem]);
+
   const existingAcademicSubmission = React.useMemo(() => {
     if (!isAcademicCategory) return null;
     return submissions.find(
@@ -388,6 +400,19 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
   const [researchSubItem, setResearchSubItem] = useState<string>('');
   const [prizesSubItem, setPrizesSubItem] = useState<string>('');
   const [eventName, setEventName] = useState<string>('');
+  const [dynamicSubItem, setDynamicSubItem] = useState<string>('');
+  const [customFieldText, setCustomFieldText] = useState<string>('');
+  const [customFieldDate, setCustomFieldDate] = useState<string>('');
+
+  React.useEffect(() => {
+    if (dynamicSubItems.length > 0) {
+      if (!dynamicSubItems.includes(dynamicSubItem)) {
+        setDynamicSubItem(dynamicSubItems[0]);
+      }
+    } else {
+      setDynamicSubItem('');
+    }
+  }, [dynamicSubItems, dynamicSubItem]);
 
   React.useEffect(() => {
     if (isResearchCategory && availableResearchSubItems.length > 0) {
@@ -859,6 +884,24 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
       }
     }
 
+    if (dynamicSubItems.length > 0 && !isResearchCategory && !isPrizesCategory && status === 'Submitted') {
+      if (!dynamicSubItem) {
+        toast.error("Please select a Sub Item before submitting.");
+        return;
+      }
+    }
+
+    if (itemCustomFields && status === 'Submitted') {
+      if (itemCustomFields.text && !customFieldText.trim()) {
+        toast.error("Please enter the Activity Details before submitting.");
+        return;
+      }
+      if (itemCustomFields.date && !customFieldDate) {
+        toast.error("Please select the Activity Date before submitting.");
+        return;
+      }
+    }
+
     const totalStudents = count90Above + count80to90 + count70to80 + failCount;
     const passedStudents = totalStudents - failCount;
     const autoPassPercentage = totalStudents > 0 ? parseFloat(((passedStudents / totalStudents) * 100).toFixed(2)) : 0;
@@ -883,6 +926,14 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
       finalDescription = `${currentItem?.title || 'Competitive Exam'} — Exam Date: ${examDate}`;
     } else if (isInternshipsCategory && !finalDescription) {
       finalDescription = `${currentItem?.title || 'Internship'} — ${startDate} to ${endDate}`;
+    } else if ((dynamicSubItem || customFieldText || customFieldDate) && !finalDescription) {
+      const parts = [
+        currentItem?.title,
+        dynamicSubItem ? `Sub Item: ${dynamicSubItem}` : '',
+        customFieldText ? `Details: ${customFieldText.trim()}` : '',
+        customFieldDate ? `Date: ${customFieldDate}` : ''
+      ].filter(Boolean);
+      finalDescription = parts.join(' | ');
     }
 
     if (!finalDescription) {
@@ -989,7 +1040,13 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                     examDate,
                   startDate: examDate
                 }
-              : { type: currentItem?.type || 'count', count: countValue };
+              : {
+                type: currentItem?.type || 'count',
+                count: countValue,
+                subItem: dynamicSubItem || undefined,
+                activityDetails: customFieldText.trim() || undefined,
+                activityDate: customFieldDate || undefined,
+              };
 
     // Enforce Admin Settings: Submission Status & Submission Time Window
     if (status === 'Submitted') {
@@ -1765,7 +1822,76 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                         />
                       </div>
                     </div>
-                  ) : !isAcademicCategory && !isResearchCategory && !isPrizesCategory && !isScholarshipsCategory && !isLeadershipCategory && !isSocialResponsibilityCategory && !isCareerAdvancementCategory && (
+                  ) : null}
+
+                  {/* Dynamic Sub-Categories Selector */}
+                  {dynamicSubItems.length > 0 && !isResearchCategory && !isPrizesCategory && (
+                    <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr', gap: '16px', padding: '20px', background: 'rgba(79, 70, 229, 0.04)', border: '1.5px solid rgba(79, 70, 229, 0.2)', borderRadius: '16px' }}>
+                      <div style={{ marginBottom: '2px' }}>
+                        <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#4f46e5', margin: 0, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+                          {currentItem?.title || 'Item'} Sub-Categories
+                        </h4>
+                      </div>
+
+                      <div className="form-group">
+                        <label className="form-label" style={{ fontWeight: 800, color: '#4f46e5' }}>
+                          Sub Item <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
+                        <select
+                          className="select"
+                          value={dynamicSubItem}
+                          onChange={(e) => setDynamicSubItem(e.target.value)}
+                          required
+                        >
+                          <option value="" disabled>Select Sub-Item / Option</option>
+                          {dynamicSubItems.map((subOpt) => {
+                            const subMarks = currentItem?.rules_json?.subItems?.[subOpt];
+                            return (
+                              <option key={subOpt} value={subOpt}>
+                                {subOpt} {subMarks !== undefined ? `(${subMarks} marks)` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Dynamic Custom Date Field */}
+                  {itemCustomFields?.date && (
+                    <div className="form-group" style={{ gridColumn: '1 / -1', padding: '16px', background: 'rgba(59, 130, 246, 0.04)', border: '1.5px solid rgba(59, 130, 246, 0.2)', borderRadius: '14px' }}>
+                      <label className="form-label" style={{ fontWeight: 800, color: '#1d4ed8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        📅 Activity / Event Date <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <input
+                        type="date"
+                        className="input"
+                        value={customFieldDate}
+                        onChange={(e) => setCustomFieldDate(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {/* Dynamic Custom Text Field */}
+                  {itemCustomFields?.text && (
+                    <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+                      <label className="form-label" style={{ fontWeight: 800, color: '#4f46e5' }}>
+                        Activity Details / Title / Topic <span style={{ color: '#ef4444' }}>*</span>
+                      </label>
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="Enter details, title, or topic for this submission..."
+                        value={customFieldText}
+                        onChange={(e) => setCustomFieldText(e.target.value)}
+                        required
+                      />
+                    </div>
+                  )}
+
+                  {/* Dynamic Count Field if specified or standard non-specialized category */}
+                  {((itemCustomFields?.count) || (!itemCustomFields && !isAcademicCategory && !isResearchCategory && !isPrizesCategory && !isScholarshipsCategory && !isLeadershipCategory && !isSocialResponsibilityCategory && !isCareerAdvancementCategory && !isProgramsOrganized && !isStartupsCategory && !isOnlineCoursesCategory && !isCompetitiveExamsCategory && !isInternshipsCategory)) && (
                     <div className="form-group">
                       <label className="form-label">Count / Frequency</label>
                       <input

@@ -81,7 +81,7 @@ interface AppContextType {
   addCriteriaItem: (categoryId: string | number, item: Omit<CriteriaItem, 'id'>) => void;
   updateCriteriaItem: (categoryId: string | number, itemId: number, item: Partial<CriteriaItem>) => void;
   deleteCriteriaItem: (categoryId: string | number, itemId: number) => void;
-  addCriteriaCategory: (category: Omit<CriteriaCategory, 'id' | 'items'>) => void;
+  addCriteriaCategory: (category: Omit<CriteriaCategory, 'id' | 'items'>) => Promise<any>;
   updateCriteriaCategory: (categoryId: string | number, category: Partial<CriteriaCategory>) => void;
   deleteCriteriaCategory: (categoryId: string | number) => void;
   fetchCriteriaCatalog: () => Promise<void>;
@@ -1186,7 +1186,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const addCriteriaCategory = async (category: Omit<CriteriaCategory, 'id' | 'items'>) => {
     const tempId = Date.now().toString();
-    setCriteriaCatalog((prev) => [...prev, { ...category, id: tempId, items: [] } as CriteriaCategory]);
+    const tempCat = { ...category, id: tempId, items: [] } as CriteriaCategory;
+    setCriteriaCatalog((prev) => [...prev, tempCat]);
     
     try {
       const res = await fetch('http://localhost:8000/api/criteria-categories/', {
@@ -1199,10 +1200,12 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         setCriteriaCatalog((prev) => prev.map(c => c.id === tempId ? createdCategory : c));
         // Re-fetch from DB so ALL roles see the updated catalog immediately
         await fetchCriteriaCatalog();
+        return createdCategory;
       }
     } catch (e) {
       console.error('Failed to add criteria category', e);
     }
+    return tempCat;
   };
 
   const updateCriteriaCategory = async (categoryId: string | number, updates: Partial<CriteriaCategory>) => {

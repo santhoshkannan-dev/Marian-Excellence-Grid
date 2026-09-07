@@ -37,6 +37,44 @@ interface AdminDept {
   classes: string[];
 }
 
+export interface CategoryItemDraft {
+  id: string;
+  title: string;
+  type: string;
+  marks: number;
+  details: string;
+  hasSubItems: boolean;
+  subItems: Array<{ key: string; marks: number }>;
+  newSubKeyInput: string;
+  newSubMarksInput: number;
+  fields: {
+    url: boolean;
+    date: boolean;
+    text: boolean;
+    count: boolean;
+    description: boolean;
+  };
+}
+
+const createDefaultItemDraft = (id = '1'): CategoryItemDraft => ({
+  id,
+  title: '',
+  type: 'Count Based',
+  marks: 5,
+  details: '',
+  hasSubItems: false,
+  subItems: [],
+  newSubKeyInput: '',
+  newSubMarksInput: 5,
+  fields: {
+    url: true,
+    date: true,
+    text: true,
+    count: false,
+    description: true,
+  },
+});
+
 export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   const { activePage } = useApp();
   const activeTab = view || activePage || 'years';
@@ -145,12 +183,62 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   const [newItemType, setNewItemType] = useState('Count Based');
   const [newItemMarks, setNewItemMarks] = useState(5);
   const [newItemDetails, setNewItemDetails] = useState('');
+  const [newItemHasSubItems, setNewItemHasSubItems] = useState(false);
+  const [newItemSubItems, setNewItemSubItems] = useState<Array<{ key: string; marks: number }>>([]);
+  const [newItemSubKey, setNewItemSubKey] = useState('');
+  const [newItemSubMarks, setNewItemSubMarks] = useState(5);
+  const [newItemFields, setNewItemFields] = useState({
+    url: true,
+    date: true,
+    text: true,
+    count: false,
+    description: true,
+  });
 
   // Custom Modal States
   const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
   const [newCatTitleModal, setNewCatTitleModal] = useState('');
   const [newCatDescModal, setNewCatDescModal] = useState('');
   const [newCatAccessModal, setNewCatAccessModal] = useState<'all_students' | 'student_rep_only'>('all_students');
+  const [catItemsDraft, setCatItemsDraft] = useState<CategoryItemDraft[]>([createDefaultItemDraft('1')]);
+
+  const updateDraftItem = (index: number, updates: Partial<CategoryItemDraft>) => {
+    setCatItemsDraft(prev => prev.map((item, idx) => idx === index ? { ...item, ...updates } : item));
+  };
+
+  const addDraftItem = () => {
+    setCatItemsDraft(prev => [...prev, createDefaultItemDraft(Date.now().toString())]);
+  };
+
+  const removeDraftItem = (index: number) => {
+    if (catItemsDraft.length <= 1) {
+      toast.warning('A category must have at least one evaluation item.');
+      return;
+    }
+    setCatItemsDraft(prev => prev.filter((_, idx) => idx !== index));
+  };
+
+  const addSubItemToDraft = (itemIndex: number) => {
+    const item = catItemsDraft[itemIndex];
+    if (!item.newSubKeyInput || !item.newSubKeyInput.trim()) {
+      toast.warning('Please enter a sub-item name');
+      return;
+    }
+    const key = item.newSubKeyInput.trim();
+    const marks = Number(item.newSubMarksInput) || 0;
+    updateDraftItem(itemIndex, {
+      subItems: [...item.subItems, { key, marks }],
+      newSubKeyInput: '',
+      newSubMarksInput: 5,
+    });
+  };
+
+  const removeSubItemFromDraft = (itemIndex: number, subIndex: number) => {
+    const item = catItemsDraft[itemIndex];
+    updateDraftItem(itemIndex, {
+      subItems: item.subItems.filter((_, idx) => idx !== subIndex),
+    });
+  };
 
   const [showAddUserModal, setShowAddUserModal] = useState(false);
   const [newUserNameModal, setNewUserNameModal] = useState('');
@@ -191,6 +279,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
     setNewCatTitleModal('');
     setNewCatDescModal('');
     setNewCatAccessModal('all_students');
+    setCatItemsDraft([createDefaultItemDraft('1')]);
     setShowAddCategoryModal(true);
   };
 
@@ -198,16 +287,38 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
     e.preventDefault();
     if (!selectedCategory || !newItemTitle.trim()) return;
 
+    const rules_json: any = {};
+    if (newItemHasSubItems && newItemSubItems.length > 0) {
+      rules_json.subItems = {};
+      newItemSubItems.forEach(s => {
+        if (s.key.trim()) rules_json.subItems[s.key.trim()] = s.marks;
+      });
+    }
+    rules_json.fields = newItemFields;
+
     addCriteriaItem(selectedCategory.id, {
       title: newItemTitle.trim(),
       type: newItemType as any,
       marks: newItemMarks,
-      details: newItemDetails.trim()
+      details: newItemDetails.trim() || `${newItemType} evaluation item`,
+      rules_json
     });
 
     setNewItemTitle('');
     setNewItemDetails('');
+    setNewItemHasSubItems(false);
+    setNewItemSubItems([]);
+    setNewItemSubKey('');
+    setNewItemSubMarks(5);
+    setNewItemFields({
+      url: true,
+      date: true,
+      text: true,
+      count: false,
+      description: true,
+    });
     setShowAddItemForm(false);
+    toast.success(`Item "${newItemTitle.trim()}" added to category!`);
   };
 
   const handleDeleteCriteriaItem = (catId: string, itemId: string) => {
@@ -660,56 +771,209 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
 
                 {/* Add Item form */}
                 {showAddItemForm && (
-                  <div className="card" style={{ border: '1.5px solid var(--primary)', background: '#ffffff' }}>
-                    <h3 style={{ fontSize: '1.15rem', fontWeight: 800, marginBottom: '16px' }}>Add Criteria Item to {selectedCategory.category}</h3>
-                    <form onSubmit={handleCreateCriteriaItem} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  <div className="card" style={{ border: '1.5px solid var(--primary)', background: '#ffffff', borderRadius: '16px', padding: '24px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, margin: 0, color: '#0f172a' }}>
+                        Add Criteria Item to {selectedCategory.category}
+                      </h3>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddItemForm(false)}
+                        style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontWeight: 700 }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleCreateCriteriaItem} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       <div className="form-group">
-                        <label className="form-label">Item Title</label>
+                        <label className="form-label" style={{ fontWeight: 800, fontSize: '0.84rem' }}>
+                          ITEM TITLE <span style={{ color: '#ef4444' }}>*</span>
+                        </label>
                         <input
                           type="text"
                           className="input"
-                          placeholder="e.g. Workshop Organized"
+                          placeholder="e.g. From Marian College, Paper Presentation, Workshop..."
                           value={newItemTitle}
                           onChange={(e) => setNewItemTitle(e.target.value)}
                           required
                         />
                       </div>
-                      <div className="form-group">
-                        <label className="form-label">Type</label>
-                        <select
-                          className="select"
-                          value={newItemType}
-                          onChange={(e) => setNewItemType(e.target.value)}
-                        >
-                          <option value="Count Based">Count Based</option>
-                          <option value="Fixed">Fixed</option>
-                          <option value="Range Based">Range Based</option>
-                          <option value="Negative Marks">Negative Marks</option>
-                        </select>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontWeight: 800, fontSize: '0.84rem' }}>TYPE</label>
+                          <select
+                            className="select"
+                            value={newItemType}
+                            onChange={(e) => setNewItemType(e.target.value)}
+                          >
+                            <option value="Count Based">Count Based</option>
+                            <option value="Fixed">Fixed</option>
+                            <option value="Range Based">Range Based</option>
+                            <option value="Negative Marks">Negative Marks</option>
+                          </select>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label" style={{ fontWeight: 800, fontSize: '0.84rem' }}>MARKS / VALUE</label>
+                          <input
+                            type="number"
+                            className="input"
+                            value={newItemMarks}
+                            onChange={(e) => setNewItemMarks(Number(e.target.value))}
+                            required
+                          />
+                        </div>
                       </div>
+
                       <div className="form-group">
-                        <label className="form-label">Marks / Value</label>
-                        <input
-                          type="number"
-                          className="input"
-                          value={newItemMarks}
-                          onChange={(e) => setNewItemMarks(Number(e.target.value))}
-                          required
-                        />
-                      </div>
-                      <div className="form-group">
-                        <label className="form-label">Description Details (e.g. penalty per count x -2)</label>
+                        <label className="form-label" style={{ fontWeight: 800, fontSize: '0.84rem' }}>DETAILS / DESCRIPTION</label>
                         <input
                           type="text"
                           className="input"
-                          placeholder="e.g. per count x 5"
+                          placeholder="e.g. per award / presentation"
                           value={newItemDetails}
                           onChange={(e) => setNewItemDetails(e.target.value)}
-                          required
                         />
                       </div>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <button type="submit" className="btn btn-primary btn-sm">Save Item</button>
+
+                      {/* Sub-Categories toggle & list */}
+                      <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '16px' }}>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 800, fontSize: '0.9rem', color: '#1e293b' }}>
+                          <input
+                            type="checkbox"
+                            checked={newItemHasSubItems}
+                            onChange={(e) => setNewItemHasSubItems(e.target.checked)}
+                            style={{ width: '18px', height: '18px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                          />
+                          <span>⚡ Enable Sub-Categories / Sub-Items (e.g. 1st Prize, 2nd Prize, etc.)</span>
+                        </label>
+
+                        {newItemHasSubItems && (
+                          <div style={{ marginTop: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                            {newItemSubItems.map((sub, sIdx) => (
+                              <div key={sIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                                <input
+                                  type="text"
+                                  className="input"
+                                  value={sub.key}
+                                  readOnly
+                                  style={{ flex: 1, background: '#ffffff', fontWeight: 600 }}
+                                />
+                                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b' }}>
+                                  {sub.marks} marks
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => setNewItemSubItems(prev => prev.filter((_, idx) => idx !== sIdx))}
+                                  style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '8px', padding: '6px 10px', cursor: 'pointer', fontWeight: 700 }}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
+
+                            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+                              <input
+                                type="text"
+                                className="input"
+                                placeholder="Sub-category name (e.g. 1st Prize Individual)..."
+                                value={newItemSubKey}
+                                onChange={(e) => setNewItemSubKey(e.target.value)}
+                                style={{ flex: 1 }}
+                              />
+                              <input
+                                type="number"
+                                className="input"
+                                placeholder="Marks"
+                                value={newItemSubMarks}
+                                onChange={(e) => setNewItemSubMarks(Number(e.target.value))}
+                                style={{ width: '90px', textAlign: 'center' }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (!newItemSubKey.trim()) {
+                                    toast.warning('Please enter sub-category name');
+                                    return;
+                                  }
+                                  setNewItemSubItems(prev => [...prev, { key: newItemSubKey.trim(), marks: newItemSubMarks }]);
+                                  setNewItemSubKey('');
+                                  setNewItemSubMarks(5);
+                                }}
+                                style={{ background: '#6366f1', color: '#ffffff', border: 'none', borderRadius: '10px', padding: '8px 16px', fontWeight: 700, cursor: 'pointer' }}
+                              >
+                                + Add
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Fields Wanted for Student Submissions */}
+                      <div style={{ background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '14px', padding: '16px' }}>
+                        <label style={{ display: 'block', fontWeight: 800, fontSize: '0.86rem', color: '#1e293b', marginBottom: '8px' }}>
+                          📋 Fields Wanted for Student Submissions:
+                        </label>
+                        <p className="muted" style={{ fontSize: '0.78rem', margin: '0 0 12px 0' }}>
+                          Check what fields students must fill out when submitting this item:
+                        </p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px' }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={newItemFields.url}
+                              onChange={(e) => setNewItemFields(prev => ({ ...prev, url: e.target.checked }))}
+                              style={{ accentColor: 'var(--primary)' }}
+                            />
+                            🔗 Google Drive Link URL
+                          </label>
+
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={newItemFields.date}
+                              onChange={(e) => setNewItemFields(prev => ({ ...prev, date: e.target.checked }))}
+                              style={{ accentColor: 'var(--primary)' }}
+                            />
+                            📅 Date Field
+                          </label>
+
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={newItemFields.text}
+                              onChange={(e) => setNewItemFields(prev => ({ ...prev, text: e.target.checked }))}
+                              style={{ accentColor: 'var(--primary)' }}
+                            />
+                            📝 Text Field (Activity / Title / Topic)
+                          </label>
+
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={newItemFields.count}
+                              onChange={(e) => setNewItemFields(prev => ({ ...prev, count: e.target.checked }))}
+                              style={{ accentColor: 'var(--primary)' }}
+                            />
+                            🔢 Count / Frequency Field
+                          </label>
+
+                          <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '6px 12px', borderRadius: '8px', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={newItemFields.description}
+                              onChange={(e) => setNewItemFields(prev => ({ ...prev, description: e.target.checked }))}
+                              style={{ accentColor: 'var(--primary)' }}
+                            />
+                            📄 Description / Notes Field
+                          </label>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '10px', marginTop: '4px' }}>
+                        <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 700 }}>Save Item</button>
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowAddItemForm(false)}>Cancel</button>
                       </div>
                     </form>
@@ -762,6 +1026,35 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
                                   }}>{String(subMarks)} marks</span>
                                 </span>
                               ))}
+                            </div>
+                          )}
+                          {item.rules_json && item.rules_json.fields && (
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginTop: '8px' }}>
+                              {item.rules_json.fields.url && (
+                                <span style={{ background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px' }}>
+                                  🔗 Drive Link
+                                </span>
+                              )}
+                              {item.rules_json.fields.date && (
+                                <span style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px' }}>
+                                  📅 Date
+                                </span>
+                              )}
+                              {item.rules_json.fields.text && (
+                                <span style={{ background: '#faf5ff', color: '#7c3aed', border: '1px solid #e9d5ff', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px' }}>
+                                  📝 Activity Details
+                                </span>
+                              )}
+                              {item.rules_json.fields.count && (
+                                <span style={{ background: '#fffbeb', color: '#d97706', border: '1px solid #fde68a', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px' }}>
+                                  🔢 Count
+                                </span>
+                              )}
+                              {item.rules_json.fields.description && (
+                                <span style={{ background: '#f8fafc', color: '#475569', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, padding: '2px 8px' }}>
+                                  📄 Description
+                                </span>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1599,74 +1892,357 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
       })()}
 
       {/* ---------------------------------------------------- */}
-      {/* ADD CATEGORY MODAL                                   */}
+      {/* ADD CATEGORY & ITEMS MODAL                           */}
       {/* ---------------------------------------------------- */}
       <CustomModal
         isOpen={showAddCategoryModal}
         onClose={() => setShowAddCategoryModal(false)}
-        title="Add Criteria Category"
+        title="Add Criteria Category & Items"
         icon="⚡"
-        description="Create a new category for student/class evaluations."
-        confirmText="Create Category"
+        description="Create a new evaluation category and define its items, sub-categories, and student submission fields."
+        confirmText="💾 Create Category & Items"
         cancelText="Cancel"
-        onConfirm={() => {
+        maxWidth="720px"
+        onConfirm={async () => {
           if (!newCatTitleModal.trim()) {
             toast.warning('Please enter a category name');
             return;
           }
-          addCriteriaCategory({
-            code: `cat-${Date.now()}`,
+          const validItems = catItemsDraft.filter(it => it.title.trim());
+          if (validItems.length === 0) {
+            toast.warning('Please add at least one item title for this category');
+            return;
+          }
+
+          const categoryCode = `cat-${Date.now()}`;
+          const createdCat = await addCriteriaCategory({
+            code: categoryCode,
             category: newCatTitleModal.trim(),
             accessLevel: newCatAccessModal,
             desc: newCatDescModal.trim() || 'Custom category description.'
           } as any);
+
+          const targetCatId = createdCat?.id || categoryCode;
+
+          for (const item of validItems) {
+            const rules_json: any = {};
+            if (item.hasSubItems && item.subItems.length > 0) {
+              rules_json.subItems = {};
+              item.subItems.forEach(s => {
+                if (s.key.trim()) rules_json.subItems[s.key.trim()] = s.marks;
+              });
+            }
+            rules_json.fields = item.fields;
+
+            await addCriteriaItem(targetCatId, {
+              title: item.title.trim(),
+              type: item.type as any,
+              marks: item.marks,
+              details: item.details.trim() || `${item.type} evaluation item`,
+              rules_json
+            });
+          }
+
           setShowAddCategoryModal(false);
-          toast.success(`Category "${newCatTitleModal}" created successfully!`);
+          toast.success(`Category "${newCatTitleModal}" and ${validItems.length} item(s) created!`);
         }}
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
-          <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-              CATEGORY NAME <span style={{ color: '#ef4444' }}>*</span>
-            </label>
-            <input
-              type="text"
-              className="input"
-              placeholder="e.g. Innovation & Sustainable Suggestion"
-              value={newCatTitleModal}
-              onChange={(e) => setNewCatTitleModal(e.target.value)}
-              style={{ width: '100%' }}
-              autoFocus
-            />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '12px' }}>
+          {/* Section 1: Category Info */}
+          <div style={{ background: '#f8fafc', padding: '18px', borderRadius: '14px', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 800, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.03em' }}>
+              📁 Category Details
+            </h4>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                CATEGORY NAME <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. Prizes, Innovative Suggestions, Academic Projects..."
+                value={newCatTitleModal}
+                onChange={(e) => setNewCatTitleModal(e.target.value)}
+                style={{ width: '100%' }}
+                autoFocus
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px' }}>
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  ACCESS LEVEL
+                </label>
+                <select
+                  className="select"
+                  value={newCatAccessModal}
+                  onChange={(e: any) => setNewCatAccessModal(e.target.value)}
+                  style={{ width: '100%' }}
+                >
+                  <option value="all_students">All Students</option>
+                  <option value="student_rep_only">Student Rep Only</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  DESCRIPTION
+                </label>
+                <input
+                  type="text"
+                  className="input"
+                  placeholder="Short description of this category..."
+                  value={newCatDescModal}
+                  onChange={(e) => setNewCatDescModal(e.target.value)}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
           </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-              DESCRIPTION
-            </label>
-            <textarea
-              className="input"
-              rows={3}
-              placeholder="Enter details about this evaluation category..."
-              value={newCatDescModal}
-              onChange={(e) => setNewCatDescModal(e.target.value)}
-              style={{ width: '100%', resize: 'vertical' }}
-            />
-          </div>
+          {/* Section 2: Items & Sub-Categories Builder */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div>
+                <h4 style={{ margin: 0, fontSize: '0.98rem', fontWeight: 800, color: '#0f172a' }}>
+                  ⚡ Category Items & Sub-Categories
+                </h4>
+                <p className="muted" style={{ margin: '2px 0 0 0', fontSize: '0.8rem' }}>
+                  Add the items, sub-items, and required input fields for this category.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={addDraftItem}
+                style={{
+                  background: 'rgba(99, 102, 241, 0.1)',
+                  color: 'var(--primary)',
+                  border: '1.5px solid rgba(99, 102, 241, 0.3)',
+                  padding: '6px 14px',
+                  borderRadius: '10px',
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  cursor: 'pointer'
+                }}
+              >
+                + Add Another Item
+              </button>
+            </div>
 
-          <div>
-            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-              ACCESS LEVEL
-            </label>
-            <select
-              className="select"
-              value={newCatAccessModal}
-              onChange={(e: any) => setNewCatAccessModal(e.target.value)}
-              style={{ width: '100%' }}
-            >
-              <option value="all_students">All Students</option>
-              <option value="student_rep_only">Student Rep Only</option>
-            </select>
+            {catItemsDraft.map((item, itemIdx) => (
+              <div
+                key={item.id}
+                style={{
+                  border: '1.5px solid #cbd5e1',
+                  borderRadius: '16px',
+                  padding: '18px',
+                  background: '#ffffff',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '14px',
+                  position: 'relative'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '10px' }}>
+                  <span style={{ fontWeight: 800, fontSize: '0.88rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    📌 Item #{itemIdx + 1}
+                  </span>
+                  {catItemsDraft.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeDraftItem(itemIdx)}
+                      style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '8px', padding: '4px 10px', fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}
+                    >
+                      ✕ Remove Item
+                    </button>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                    ITEM TITLE <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="text"
+                    className="input"
+                    placeholder="e.g. From Marian College, Outside Marian College, Workshop..."
+                    value={item.title}
+                    onChange={(e) => updateDraftItem(itemIdx, { title: e.target.value })}
+                    style={{ width: '100%' }}
+                  />
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr', gap: '12px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      TYPE
+                    </label>
+                    <select
+                      className="select"
+                      value={item.type}
+                      onChange={(e) => updateDraftItem(itemIdx, { type: e.target.value })}
+                      style={{ width: '100%' }}
+                    >
+                      <option value="Count Based">Count Based</option>
+                      <option value="Fixed">Fixed</option>
+                      <option value="Range Based">Range Based</option>
+                      <option value="Negative Marks">Negative Marks</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      BASE MARKS
+                    </label>
+                    <input
+                      type="number"
+                      className="input"
+                      value={item.marks}
+                      onChange={(e) => updateDraftItem(itemIdx, { marks: Number(e.target.value) })}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                      DETAILS / NOTE
+                    </label>
+                    <input
+                      type="text"
+                      className="input"
+                      placeholder="e.g. per award"
+                      value={item.details}
+                      onChange={(e) => updateDraftItem(itemIdx, { details: e.target.value })}
+                      style={{ width: '100%' }}
+                    />
+                  </div>
+                </div>
+
+                {/* Sub-Items Toggle & Builder */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontWeight: 700, fontSize: '0.85rem', color: '#1e293b' }}>
+                    <input
+                      type="checkbox"
+                      checked={item.hasSubItems}
+                      onChange={(e) => updateDraftItem(itemIdx, { hasSubItems: e.target.checked })}
+                      style={{ width: '16px', height: '16px', accentColor: 'var(--primary)', cursor: 'pointer' }}
+                    />
+                    <span>⚡ Has Sub-Categories / Sub-Items (e.g. 1st Prize, 2nd Prize, Outside Marian, etc.)</span>
+                  </label>
+
+                  {item.hasSubItems && (
+                    <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {item.subItems.map((sub, sIdx) => (
+                        <div key={sIdx} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                          <input
+                            type="text"
+                            className="input"
+                            value={sub.key}
+                            readOnly
+                            style={{ flex: 1, background: '#ffffff', fontWeight: 600, fontSize: '0.85rem' }}
+                          />
+                          <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#64748b' }}>
+                            {sub.marks} marks
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => removeSubItemFromDraft(itemIdx, sIdx)}
+                            style={{ background: '#fee2e2', color: '#dc2626', border: 'none', borderRadius: '8px', padding: '4px 8px', cursor: 'pointer', fontWeight: 700 }}
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+
+                      <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <input
+                          type="text"
+                          className="input"
+                          placeholder="Sub-item name (e.g. 1st Prize Individual)..."
+                          value={item.newSubKeyInput || ''}
+                          onChange={(e) => updateDraftItem(itemIdx, { newSubKeyInput: e.target.value })}
+                          style={{ flex: 1, fontSize: '0.85rem' }}
+                        />
+                        <input
+                          type="number"
+                          className="input"
+                          placeholder="Marks"
+                          value={item.newSubMarksInput ?? 5}
+                          onChange={(e) => updateDraftItem(itemIdx, { newSubMarksInput: Number(e.target.value) })}
+                          style={{ width: '80px', textAlign: 'center', fontSize: '0.85rem' }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => addSubItemToDraft(itemIdx)}
+                          style={{ background: '#6366f1', color: '#ffffff', border: 'none', borderRadius: '8px', padding: '6px 14px', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer' }}
+                        >
+                          + Add Sub-Item
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Required Fields Selector */}
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '14px' }}>
+                  <label style={{ display: 'block', fontWeight: 800, fontSize: '0.82rem', color: '#334155', marginBottom: '8px' }}>
+                    📋 Fields Wanted for Student Submissions:
+                  </label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={item.fields.url}
+                        onChange={(e) => updateDraftItem(itemIdx, { fields: { ...item.fields, url: e.target.checked } })}
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      🔗 Drive Link URL
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={item.fields.date}
+                        onChange={(e) => updateDraftItem(itemIdx, { fields: { ...item.fields, date: e.target.checked } })}
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      📅 Date Field
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={item.fields.text}
+                        onChange={(e) => updateDraftItem(itemIdx, { fields: { ...item.fields, text: e.target.checked } })}
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      📝 Text Field (Activity Details / Topic)
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={item.fields.count}
+                        onChange={(e) => updateDraftItem(itemIdx, { fields: { ...item.fields, count: e.target.checked } })}
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      🔢 Count / Frequency
+                    </label>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.82rem', fontWeight: 600, background: '#ffffff', border: '1px solid #cbd5e1', padding: '5px 10px', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input
+                        type="checkbox"
+                        checked={item.fields.description}
+                        onChange={(e) => updateDraftItem(itemIdx, { fields: { ...item.fields, description: e.target.checked } })}
+                        style={{ accentColor: 'var(--primary)' }}
+                      />
+                      📄 Description
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       </CustomModal>

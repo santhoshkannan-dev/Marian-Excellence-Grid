@@ -423,7 +423,7 @@ export default function ChampionsManagementPage() {
                               type="button"
                               className="btn btn-sm"
                               style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', fontWeight: 700 }}
-                              onClick={() => setDeleteChampIdModal(champ.id)}
+                              onClick={() => champ.id && setDeleteChampIdModal(champ.id)}
                             >
                               Delete
                             </button>

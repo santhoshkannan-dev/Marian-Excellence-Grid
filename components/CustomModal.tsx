@@ -11,6 +11,8 @@ interface CustomModalProps {
   confirmText?: string;
   cancelText?: string;
   confirmVariant?: 'primary' | 'danger' | 'warning';
+  maxWidth?: string;
+  maxHeight?: string;
   onConfirm?: () => void;
   children?: React.ReactNode;
 }
@@ -24,6 +26,8 @@ export const CustomModal: React.FC<CustomModalProps> = ({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   confirmVariant = 'primary',
+  maxWidth = '520px',
+  maxHeight = '90vh',
   onConfirm,
   children,
 }) => {
@@ -73,7 +77,9 @@ export const CustomModal: React.FC<CustomModalProps> = ({
           borderRadius: '20px',
           padding: '28px',
           width: '100%',
-          maxWidth: '480px',
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+          overflowY: 'auto',
           boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
           border: '1px solid rgba(226, 232, 240, 0.8)',
           position: 'relative',
