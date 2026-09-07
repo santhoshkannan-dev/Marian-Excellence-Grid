@@ -61,7 +61,7 @@ export default function StudentLayout({ children }: { children: React.ReactNode 
         <div>
           <div className="portal-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/Assets/Images/marian-best-logo-removebg-preview.png" alt="Marian Logo" style={{ width: '36px', height: '36px', objectFit: 'contain', flexShrink: 0 }} />
+              <img src="/Assets/Images/hands_logo.png" alt="Marian Logo" style={{ width: '36px', height: '36px', objectFit: 'contain', flexShrink: 0 }} />
               {!sidebarCollapsed && (
                 <div>
                   <h2 className="portal-brand-title">Excellence Grid</h2>

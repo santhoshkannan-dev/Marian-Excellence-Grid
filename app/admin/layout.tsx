@@ -63,7 +63,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div>
           <div className="portal-brand" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <img src="/Assets/Images/marian-best-logo-removebg-preview.png" alt="Marian Logo" style={{ width: '36px', height: '36px', objectFit: 'contain', flexShrink: 0 }} />
+              <img src="/Assets/Images/hands_logo.png" alt="Marian Logo" style={{ width: '36px', height: '36px', objectFit: 'contain', flexShrink: 0 }} />
               {!sidebarCollapsed && (
                 <div>
                   <h2 className="portal-brand-title" style={{ fontSize: '1.15rem', fontWeight: 800, color: '#111827' }}>Excellence Grid</h2>

@@ -193,6 +193,8 @@ export const LandingPage: React.FC = () => {
 
   // Active Standings ordered strictly by official Class Ranking
   const activeStandingsData: StandingItem[] = React.useMemo(() => {
+    const palette = ['#4f46e5', '#059669', '#d97706', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#3b82f6', '#10b981', '#ef4444'];
+
     // Priority 1: Official class ranking from classIndexData (/api/class-index/)
     if (classIndexData && classIndexData.length > 0) {
       const rankedEntries = [...classIndexData.filter((e) => e.rank !== null)].sort(
@@ -206,13 +208,14 @@ export const LandingPage: React.FC = () => {
 
       const mapped = combined.map((entry, idx) => {
         const { count, score } = getClassSubmissionsCountAndScore(entry.class_name);
-        // Moderated class index M defines official ranking score; fallback to evaluated marks S or computed score
-        const totalScore = entry.M !== null && entry.M !== undefined && entry.M > 0
-          ? entry.M
-          : (entry.S > 0 ? entry.S : (score > 0 ? score : (entry.M ?? 0)));
-        const rank = entry.rank !== null ? entry.rank : idx + 1;
         const fallback = top10FallbackData.find((f) => f.className.toLowerCase() === entry.class_name.toLowerCase());
         const totalSubmissions = count > 0 ? count : (fallback ? fallback.totalSubmissions : 0);
+        // Moderated class index M defines official ranking score; fallback to evaluated marks S or computed score
+        const rawScore = entry.M !== null && entry.M !== undefined && entry.M > 0
+          ? entry.M
+          : (entry.S > 0 ? entry.S : (score > 0 ? score : (fallback ? fallback.totalScore : 0)));
+        const totalScore = Math.max(0, rawScore);
+        const rank = entry.rank !== null ? entry.rank : idx + 1;
 
         return {
           rank,
@@ -221,7 +224,7 @@ export const LandingPage: React.FC = () => {
           totalSubmissions,
           totalScore,
           percentage: 0,
-          color: '#2563eb',
+          color: palette[idx % palette.length],
           M: entry.M,
           S: entry.S,
           P: entry.P,
@@ -251,7 +254,7 @@ export const LandingPage: React.FC = () => {
           totalSubmissions,
           totalScore,
           percentage: 0,
-          color: '#2563eb',
+          color: palette[idx % palette.length],
         };
       });
 
@@ -263,7 +266,7 @@ export const LandingPage: React.FC = () => {
       const top10 = computed.slice(0, 10).map((item, idx) => ({
         ...item,
         rank: idx + 1,
-        color: '#2563eb',
+        color: palette[idx % palette.length],
       }));
 
       const grandTotal = top10.reduce((sum, item) => sum + item.totalScore, 0) || 1;
@@ -274,7 +277,7 @@ export const LandingPage: React.FC = () => {
     }
 
     // Priority 3: Curated Top 10 fallback data
-    return top10FallbackData.map((f) => ({ ...f, color: '#2563eb' }));
+    return top10FallbackData.map((f, idx) => ({ ...f, color: palette[idx % palette.length] }));
   }, [classIndexData, classes, getClassSubmissionsCountAndScore]);
 
   // Helper to extract criteria category & title
@@ -601,7 +604,7 @@ export const LandingPage: React.FC = () => {
   const cx = 250;
   const cy = 310;
   const maxRadius = 220;
-  const radiusStep = 15;
+  const radiusStep = activeStandingsData.length > 5 ? 17 : 24;
   const maxSubmissions = Math.max(...activeStandingsData.map((d) => d.totalSubmissions), 1);
   const topScore = Math.max(...activeStandingsData.map((d) => d.totalScore), 1);
 
@@ -653,7 +656,7 @@ export const LandingPage: React.FC = () => {
         {/* Top bar with Interactive Search (Feature 9) */}
         <div className="search-header-container">
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/Assets/Images/marian-best-logo-removebg-preview.png" alt="Marian Best Logo" style={{ height: '42px', objectFit: 'contain' }} />
+            <img src="/Assets/Images/hands_logo.png" alt="Marian Logo" style={{ height: '42px', objectFit: 'contain' }} />
             <span style={{ fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.02em', color: 'var(--text-main)' }}>Marian Excellence Grid Portal</span>
           </div>
 
@@ -735,32 +738,20 @@ export const LandingPage: React.FC = () => {
           <div className="dashboard-grid">
             {/* Left Panel: Class Progress Gauge */}
             <div className="chart-section">
-              <div className="chart-heading-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <h2 className="chart-title" style={{ margin: 0 }}>Class Progress Gauge</h2>
-                  <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                    Progress driven by Class Ranking
-                  </p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '16px' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#1d4ed8', display: 'inline-block' }}></span>
-                  <span>Top {activeStandingsData.length} Ranked Classes</span>
-                </div>
+              <div className="chart-heading-container">
+                <h2 className="chart-title">Class Progress Gauge</h2>
               </div>
 
               <div className="svg-container">
-                <svg viewBox="-10 0 520 325" width="100%" height="100%">
+                <svg viewBox="-30 0 560 325" width="100%" height="100%">
                   <defs>
-                    <linearGradient id="gauge-blue-gradient" x1="100%" y1="0%" x2="0%" y2="0%">
-                      <stop offset="0%" stopColor="#1d4ed8" />
-                      <stop offset="60%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#93c5fd" />
-                    </linearGradient>
-                    <linearGradient id="gauge-blue-highlight" x1="100%" y1="0%" x2="0%" y2="0%">
-                      <stop offset="0%" stopColor="#1e40af" />
-                      <stop offset="60%" stopColor="#2563eb" />
-                      <stop offset="100%" stopColor="#60a5fa" />
-                    </linearGradient>
+                    {activeStandingsData.map((_, idx) => (
+                      <linearGradient id={`arc-grad-${idx}`} key={idx} x1="100%" y1="0%" x2="0%" y2="0%">
+                        <stop offset="0%" stopColor="#4f46e5" />
+                        <stop offset="50%" stopColor="#818cf8" />
+                        <stop offset="100%" stopColor="#e0e7ff" />
+                      </linearGradient>
+                    ))}
                   </defs>
 
                   {/* Scale Ticks & Percentage Labels */}
@@ -789,19 +780,18 @@ export const LandingPage: React.FC = () => {
                     );
                   })}
 
-                  {/* Concentric Semi-Circle Arcs - Same Color Gradient Blue */}
+                  {/* Concentric Semi-Circle Arcs */}
                   {activeStandingsData.map((item, idx) => {
                     const r = maxRadius - idx * radiusStep;
                     const dPath = `M ${cx + r} ${cy} A ${r} ${r} 0 0 0 ${cx - r} ${cy}`;
                     const pathLen = Math.PI * r;
 
-                    // Gauge progress is strictly based on Class Ranking & Points
-                    const scoreRatio = topScore > 0 && item.totalScore > 0 ? (item.totalScore / topScore) : 0;
                     const totalRanked = activeStandingsData.length || 1;
-                    const rankFactor = (totalRanked - (item.rank - 1)) / totalRanked;
+                    const rankProgress = totalRanked === 1 ? 0.85 : Math.max(0.20, 0.88 - ((item.rank - 1) * (0.64 / Math.max(1, totalRanked - 1))));
+                    const scoreRatio = topScore > 0 && item.totalScore > 0 ? (item.totalScore / topScore) : 0;
                     const progress = item.totalScore > 0
-                      ? Math.max(0.06, Math.min(0.96, scoreRatio * 0.95))
-                      : Math.max(0.03, rankFactor * 0.08);
+                      ? Math.max(0.06, Math.min(0.95, scoreRatio * 0.92))
+                      : rankProgress;
 
                     // Loading Animation Dash Offset logic
                     const dashOffset = isLoaded ? (pathLen * (1 - progress)) : pathLen;
@@ -817,11 +807,11 @@ export const LandingPage: React.FC = () => {
                       <g key={idx} style={{ opacity: isDimmed ? 0.25 : 1, transition: 'opacity 0.3s' }}>
                         {/* Background track */}
                         <path d={dPath} className="gauge-track" />
-                        {/* Filled Arc - Uniform Blue Gradient */}
+                        {/* Filled Arc */}
                         <path
                           d={dPath}
                           className={`gauge-arc ${isHighlighted ? 'highlighted' : ''}`}
-                          stroke={isHighlighted ? 'url(#gauge-blue-highlight)' : 'url(#gauge-blue-gradient)'}
+                          stroke={`url(#arc-grad-${idx})`}
                           strokeDasharray={pathLen}
                           strokeDashoffset={dashOffset}
                           style={{
@@ -832,50 +822,20 @@ export const LandingPage: React.FC = () => {
                           onMouseLeave={() => setHoveredIndex(null)}
                           onClick={() => setSelectedClass(item)}
                         />
-                        {/* Rank & Points label at the tip of arc on hover */}
-                        {isHighlighted && (
-                          <text
-                            x={labelX}
-                            y={labelY}
-                            className="arc-tip-label highlighted"
-                            textAnchor="middle"
-                            style={{ fill: '#1d4ed8', fontWeight: 800 }}
-                          >
-                            Rank #{item.rank} • {Number.isInteger(item.totalScore) ? item.totalScore : item.totalScore.toFixed(1)} pts
-                          </text>
-                        )}
+                        {/* Score Label at tip of arc */}
+                        <text
+                          x={labelX}
+                          y={labelY}
+                          className={`arc-tip-label ${isHighlighted ? 'highlighted' : ''}`}
+                          textAnchor="middle"
+                        >
+                          {item.totalScore > 0
+                            ? (Number.isInteger(item.totalScore) ? item.totalScore.toLocaleString() : item.totalScore.toFixed(1))
+                            : `#${item.rank}`}
+                        </text>
                       </g>
                     );
                   })}
-
-                  {/* Center Interactive Summary */}
-                  <g className="gauge-center-info" style={{ pointerEvents: 'none' }}>
-                    {hoveredIndex !== null && activeStandingsData[hoveredIndex] ? (
-                      <>
-                        <text x={cx} y={cy - 48} textAnchor="middle" style={{ fontSize: '1.05rem', fontWeight: 800, fill: '#1d4ed8' }}>
-                          {activeStandingsData[hoveredIndex].className}
-                        </text>
-                        <text x={cx} y={cy - 28} textAnchor="middle" style={{ fontSize: '0.82rem', fontWeight: 700, fill: '#1e293b' }}>
-                          Rank #{activeStandingsData[hoveredIndex].rank} • {activeStandingsData[hoveredIndex].department}
-                        </text>
-                        <text x={cx} y={cy - 10} textAnchor="middle" style={{ fontSize: '0.74rem', fontWeight: 600, fill: '#64748b' }}>
-                          {Number.isInteger(activeStandingsData[hoveredIndex].totalScore) ? activeStandingsData[hoveredIndex].totalScore : activeStandingsData[hoveredIndex].totalScore.toFixed(1)} Class Points • {activeStandingsData[hoveredIndex].totalSubmissions} {activeStandingsData[hoveredIndex].totalSubmissions === 1 ? 'sub' : 'subs'}
-                        </text>
-                      </>
-                    ) : (
-                      <>
-                        <text x={cx} y={cy - 44} textAnchor="middle" style={{ fontSize: '0.96rem', fontWeight: 800, fill: '#1e293b' }}>
-                          Class Ranking Gauge
-                        </text>
-                        <text x={cx} y={cy - 26} textAnchor="middle" style={{ fontSize: '0.76rem', fontWeight: 600, fill: '#64748b' }}>
-                          Top {activeStandingsData.length} Ranked Classes
-                        </text>
-                        <text x={cx} y={cy - 10} textAnchor="middle" style={{ fontSize: '0.72rem', fontWeight: 700, fill: '#1d4ed8' }}>
-                          Leader: {activeStandingsData[0]?.className || 'N/A'} (Rank #1)
-                        </text>
-                      </>
-                    )}
-                  </g>
                 </svg>
               </div>
             </div>
@@ -1120,13 +1080,16 @@ export const LandingPage: React.FC = () => {
                           </span>
 
                           {/* 2. Class */}
-                          <span style={{
-                            fontSize: '0.94rem',
-                            fontWeight: 700,
-                            color: '#0f172a',
-                          }}>
-                            {item.className}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.color, flexShrink: 0, display: 'inline-block' }}></span>
+                            <span style={{
+                              fontSize: '0.94rem',
+                              fontWeight: 700,
+                              color: '#0f172a',
+                            }}>
+                              {item.className}
+                            </span>
+                          </div>
 
                           {/* 3. Class Submissions */}
                           <div style={{ display: 'flex', justifyContent: 'center' }}>
@@ -1151,7 +1114,10 @@ export const LandingPage: React.FC = () => {
                             color: '#0f172a',
                             textAlign: 'right',
                           }}>
-                            {Number.isInteger(item.totalScore) ? item.totalScore : item.totalScore.toFixed(1)} pts
+                            {(() => {
+                              const s = Math.max(0, item.totalScore);
+                              return Number.isInteger(s) ? s : s.toFixed(1);
+                            })()} pts
                           </span>
                         </div>
                       );
