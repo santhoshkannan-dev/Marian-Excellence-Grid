@@ -721,12 +721,12 @@ export const LandingPage: React.FC = () => {
                 <div>
                   <h2 className="chart-title" style={{ margin: 0 }}>Class Progress Gauge</h2>
                   <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
-                    Progress driven by Class Total Submissions
+                    Progress driven by Class Ranking
                   </p>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '16px' }}>
                   <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#1d4ed8', display: 'inline-block' }}></span>
-                  <span>Top {activeStandingsData.length} Classes</span>
+                  <span>Top {activeStandingsData.length} Ranked Classes</span>
                 </div>
               </div>
 

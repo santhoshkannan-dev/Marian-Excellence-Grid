@@ -4,7 +4,6 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useApp } from '@/context/AppContext';
 import { Champion } from '@/data/initialData';
-import { toast } from 'react-toastify';
 import { CustomModal } from '@/components/CustomModal';
 
 export default function ChampionsManagementPage() {
@@ -421,7 +420,6 @@ export default function ChampionsManagementPage() {
                             </span>
 
                             <button
-                              onClick={() => champ.id && handleDelete(champ.id)}
                               type="button"
                               className="btn btn-sm"
                               style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', fontWeight: 700 }}
