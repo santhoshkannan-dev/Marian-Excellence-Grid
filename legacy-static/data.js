@@ -110,7 +110,7 @@ window.criteriaData = [
       { id: 801, title: "MCSC Executive Body Position", marks: 10, type: "fixed" },
       { id: 802, title: "SAHYA Executive Body Position", marks: 10, type: "fixed" },
       { id: 803, title: "Clubs & Associations Leadership Position", marks: 8, type: "fixed" },
-      { id: 804, title: "Any Other", marks: 5, type: "fixed" }
+      { id: 804, title: "Innovative / Sustainable Suggestion", marks: 5, type: "fixed" }
     ]
   },
   {

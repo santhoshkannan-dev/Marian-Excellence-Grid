@@ -255,7 +255,7 @@ export const defaultCriteriaCatalog: CriteriaCategory[] = [
       { id: 801, title: "MCSC Executive Body Position", marks: 5, type: "count" },
       { id: 802, title: "SAHYA Executive Body Position", marks: 5, type: "count" },
       { id: 803, title: "Clubs & Associations Leadership Position", marks: 5, type: "count" },
-      { id: 804, title: "Any Other", marks: 5, type: "count" }
+      { id: 804, title: "Innovative / Sustainable Suggestion", marks: 5, type: "count" }
     ]
   },
   {

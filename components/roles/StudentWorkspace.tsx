@@ -114,14 +114,24 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
     const catCode = String(currentCategory.code || '').toLowerCase().trim();
     const catId = String(currentCategory.id || '').toLowerCase().trim();
     const isCareerAdvancement = catName.includes('career advancement') || catCode === 'cat-career-advancement' || catId === 'cat-career-advancement' || catId === '11';
+    const isLeadership = catName.includes('leadership') || catCode === 'cat-leadership' || catId === 'cat-leadership' || catId === '8';
+
+    let items = currentCategory.items;
 
     if (isCareerAdvancement && !isStudentRep) {
-      return currentCategory.items.filter((i) =>
+      items = items.filter((i) =>
         String(i.title || '').toLowerCase().includes('linkedin')
       );
     }
 
-    return currentCategory.items;
+    if (isLeadership && !isStudentRep) {
+      items = items.filter((i) => {
+        const title = String(i.title || '').toLowerCase().trim();
+        return !title.includes('innovative') && !title.includes('sustainable') && title !== 'any other';
+      });
+    }
+
+    return items;
   }, [currentCategory, isStudentRep]);
 
   const currentItem: CriteriaItem | undefined = React.useMemo(() => {
@@ -855,8 +865,8 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
       finalDescription = `${currentItem?.title || 'Prizes'} — ${prizesSubItem}`;
     } else if (isProgramsOrganized && !finalDescription) {
       finalDescription = `${currentItem?.title || 'Program Organized'}: ${eventName.trim()}`;
-    } else if (isLeadershipCategory && String(currentItem?.title || '').toLowerCase().trim() === 'any other' && !finalDescription) {
-      finalDescription = `Leadership (Any Other): ${eventName.trim()}`;
+    } else if (isLeadershipCategory && (String(currentItem?.title || '').toLowerCase().trim().includes('innovative') || String(currentItem?.title || '').toLowerCase().trim().includes('sustainable') || String(currentItem?.title || '').toLowerCase().trim() === 'any other') && !finalDescription) {
+      finalDescription = `Innovative / Sustainable Suggestion: ${eventName.trim()}`;
     } else if (isLinkedInItem && !finalDescription) {
       finalDescription = `${currentItem?.title || 'LinkedIn Advancement'}: ${proofFile.trim()}`;
     } else if ((isCompetitiveExamsCategory || isUpscExamItem) && !finalDescription) {
@@ -939,9 +949,10 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                   eventId: eventId.trim() || undefined,
                   count: countValue || 1
                 }
-                : (isLeadershipCategory && String(currentItem?.title || '').toLowerCase().trim() === 'any other')
+                : (isLeadershipCategory && (String(currentItem?.title || '').toLowerCase().trim().includes('innovative') || String(currentItem?.title || '').toLowerCase().trim().includes('sustainable') || String(currentItem?.title || '').toLowerCase().trim() === 'any other'))
                   ? {
-                    type: 'leadership_any_other',
+                    type: 'leadership_innovative_suggestion',
+                    suggestionName: eventName.trim(),
                     positionName: eventName.trim(),
                     eventName: eventName.trim(),
                     count: 1
@@ -1748,15 +1759,15 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                     </div>
                   )}
 
-                  {isLeadershipCategory && currentItem && String(currentItem.title || '').toLowerCase().trim() === 'any other' && (
+                  {isLeadershipCategory && currentItem && (String(currentItem.title || '').toLowerCase().trim().includes('innovative') || String(currentItem.title || '').toLowerCase().trim().includes('sustainable') || String(currentItem.title || '').toLowerCase().trim() === 'any other') && (
                     <div className="form-group" style={{ marginBottom: '16px' }}>
                       <label className="form-label" style={{ fontWeight: 800, color: '#4f46e5' }}>
-                        Position / Activity Name
+                        Details of Innovative / Sustainable Suggestion
                       </label>
                       <input
                         type="text"
                         className="input"
-                        placeholder="Enter the position or leadership activity details..."
+                        placeholder="Enter details of the innovative or sustainable suggestion..."
                         value={eventName}
                         onChange={(e) => setEventName(e.target.value)}
                         required
