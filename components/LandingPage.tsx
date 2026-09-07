@@ -107,6 +107,7 @@ export const LandingPage: React.FC = () => {
     classes,
     submissions,
     classIndexData,
+    isClassIndexLoading,
     fetchClassIndex,
     fetchSubmissions,
     students,
@@ -199,12 +200,11 @@ export const LandingPage: React.FC = () => {
     if (classIndexData && classIndexData.length > 0) {
       const mapped = classIndexData.map((entry) => {
         const { count, score } = getClassSubmissionsCountAndScore(entry.class_name);
-        const fallback = top10FallbackData.find((f) => f.className.toLowerCase() === entry.class_name.toLowerCase());
-        const totalSubmissions = count > 0 ? count : (fallback ? fallback.totalSubmissions : 0);
+        const totalSubmissions = count;
         // Moderated class index M defines official ranking score; fallback to evaluated marks S or computed score
         const rawScore = entry.M !== null && entry.M !== undefined && entry.M > 0
           ? entry.M
-          : (entry.S > 0 ? entry.S : (score > 0 ? score : (fallback ? fallback.totalScore : 0)));
+          : (entry.S > 0 ? entry.S : (score > 0 ? score : (entry.M ?? 0)));
         const totalScore = Math.max(0, rawScore);
 
         return {
@@ -240,20 +240,21 @@ export const LandingPage: React.FC = () => {
       }));
     }
 
+    // While rankings are loading on initial cold visit without cache, return empty array so skeleton UI displays
+    if (classIndexData === null && isClassIndexLoading) {
+      return [];
+    }
+
     // Priority 2: Compute standings from classes & submissions
     if (classes && classes.length > 0) {
       const computed = classes.map((c, idx) => {
         const { count, score } = getClassSubmissionsCountAndScore(c.name);
-        const fallback = top10FallbackData.find((f) => f.className.toLowerCase() === c.name.toLowerCase());
-        const totalSubmissions = count > 0 ? count : (fallback ? fallback.totalSubmissions : 0);
-        const totalScore = score > 0 ? score : (fallback ? fallback.totalScore : 0);
-
         return {
           rank: idx + 1,
           className: c.name,
           department: c.department || 'General',
-          totalSubmissions,
-          totalScore,
+          totalSubmissions: count,
+          totalScore: score,
           percentage: 0,
           color: palette[idx % palette.length],
         };
@@ -277,10 +278,8 @@ export const LandingPage: React.FC = () => {
       }));
     }
 
-    // Priority 3: Curated Top 10 fallback data sorted by points
-    const sortedFallback = [...top10FallbackData].sort((a, b) => b.totalScore - a.totalScore);
-    return sortedFallback.map((f, idx) => ({ ...f, rank: idx + 1, color: palette[idx % palette.length] }));
-  }, [classIndexData, classes, getClassSubmissionsCountAndScore]);
+    return [];
+  }, [classIndexData, isClassIndexLoading, classes, getClassSubmissionsCountAndScore]);
 
   // Helper to extract criteria category & title
   const getCriteriaDetails = React.useCallback(
@@ -607,8 +606,8 @@ export const LandingPage: React.FC = () => {
   const cy = 310;
   const maxRadius = 220;
   const radiusStep = activeStandingsData.length > 5 ? 17 : 24;
-  const maxSubmissions = Math.max(...activeStandingsData.map((d) => d.totalSubmissions), 1);
-  const topScore = Math.max(...activeStandingsData.map((d) => d.totalScore), 1);
+  const maxSubmissions = activeStandingsData.length > 0 ? Math.max(...activeStandingsData.map((d) => d.totalSubmissions), 1) : 1;
+  const topScore = activeStandingsData.length > 0 ? Math.max(...activeStandingsData.map((d) => d.totalScore), 1) : 1;
 
   // Categories Stacked layout styles
   const getCatStyle = (index: number) => {
@@ -740,13 +739,27 @@ export const LandingPage: React.FC = () => {
           <div className="dashboard-grid">
             {/* Left Panel: Class Progress Gauge */}
             <div className="chart-section">
-              <div className="chart-heading-container">
-                <h2 className="chart-title">Class Progress Gauge</h2>
+              <div className="chart-heading-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h2 className="chart-title" style={{ margin: 0 }}>Class Progress Gauge</h2>
+                  <p style={{ margin: '3px 0 0 0', fontSize: '0.78rem', color: '#64748b' }}>
+                    Progress driven by Class Ranking
+                  </p>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', fontWeight: 700, color: '#1d4ed8', background: '#eff6ff', padding: '4px 10px', borderRadius: '16px' }}>
+                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#1d4ed8', display: 'inline-block' }}></span>
+                  <span>{isClassIndexLoading && activeStandingsData.length === 0 ? 'Loading Standings...' : `Top ${activeStandingsData.length} Ranked Classes`}</span>
+                </div>
               </div>
 
               <div className="svg-container">
                 <svg viewBox="-30 0 560 325" width="100%" height="100%">
                   <defs>
+                    <linearGradient id="skeleton-grad" x1="100%" y1="0%" x2="0%" y2="0%">
+                      <stop offset="0%" stopColor="#e2e8f0" />
+                      <stop offset="50%" stopColor="#cbd5e1" />
+                      <stop offset="100%" stopColor="#f1f5f9" />
+                    </linearGradient>
                     {activeStandingsData.map((_, idx) => (
                       <linearGradient id={`arc-grad-${idx}`} key={idx} x1="100%" y1="0%" x2="0%" y2="0%">
                         <stop offset="0%" stopColor="#4f46e5" />
@@ -782,62 +795,107 @@ export const LandingPage: React.FC = () => {
                     );
                   })}
 
-                  {/* Concentric Semi-Circle Arcs */}
-                  {activeStandingsData.map((item, idx) => {
-                    const r = maxRadius - idx * radiusStep;
-                    const dPath = `M ${cx + r} ${cy} A ${r} ${r} 0 0 0 ${cx - r} ${cy}`;
-                    const pathLen = Math.PI * r;
-
-                    const totalRanked = activeStandingsData.length || 1;
-                    const rankProgress = totalRanked === 1 ? 0.85 : Math.max(0.20, 0.88 - ((item.rank - 1) * (0.64 / Math.max(1, totalRanked - 1))));
-                    const scoreRatio = topScore > 0 && item.totalScore > 0 ? (item.totalScore / topScore) : 0;
-                    const progress = item.totalScore > 0
-                      ? Math.max(0.06, Math.min(0.95, scoreRatio * 0.92))
-                      : rankProgress;
-
-                    // Loading Animation Dash Offset logic
-                    const dashOffset = isLoaded ? (pathLen * (1 - progress)) : pathLen;
-
-                    const theta = progress * Math.PI;
-                    const labelX = cx + r * Math.cos(theta);
-                    const labelY = cy - r * Math.sin(theta) - 5;
-
-                    const isDimmed = hoveredIndex !== null && hoveredIndex !== idx;
-                    const isHighlighted = hoveredIndex === idx;
-
-                    return (
-                      <g key={idx} style={{ opacity: isDimmed ? 0.25 : 1, transition: 'opacity 0.3s' }}>
-                        {/* Background track */}
-                        <path d={dPath} className="gauge-track" />
-                        {/* Filled Arc */}
-                        <path
-                          d={dPath}
-                          className={`gauge-arc ${isHighlighted ? 'highlighted' : ''}`}
-                          stroke={`url(#arc-grad-${idx})`}
-                          strokeDasharray={pathLen}
-                          strokeDashoffset={dashOffset}
-                          style={{
-                            cursor: 'pointer',
-                            transition: 'stroke-dashoffset 1.5s cubic-bezier(0.25, 0.8, 0.25, 1)',
-                          }}
-                          onMouseEnter={() => setHoveredIndex(idx)}
-                          onMouseLeave={() => setHoveredIndex(null)}
-                          onClick={() => setSelectedClass(item)}
-                        />
-                        {/* Score Label at tip of arc */}
-                        <text
-                          x={labelX}
-                          y={labelY}
-                          className={`arc-tip-label ${isHighlighted ? 'highlighted' : ''}`}
-                          textAnchor="middle"
-                        >
-                          {item.totalScore > 0
-                            ? (Number.isInteger(item.totalScore) ? item.totalScore.toLocaleString() : item.totalScore.toFixed(1))
-                            : `#${item.rank}`}
+                  {/* Loading skeleton or empty state */}
+                  {isClassIndexLoading && activeStandingsData.length === 0 ? (
+                    <>
+                      {[0, 1, 2, 3, 4].map((sIdx) => {
+                        const r = maxRadius - sIdx * 24;
+                        const dPath = `M ${cx + r} ${cy} A ${r} ${r} 0 0 0 ${cx - r} ${cy}`;
+                        const pathLen = Math.PI * r;
+                        return (
+                          <g key={sIdx}>
+                            <path d={dPath} className="gauge-track" />
+                            <path
+                              d={dPath}
+                              fill="none"
+                              stroke="url(#skeleton-grad)"
+                              strokeWidth="8px"
+                              strokeLinecap="round"
+                              strokeDasharray={pathLen}
+                              strokeDashoffset={pathLen * (0.35 + sIdx * 0.1)}
+                              style={{ opacity: 0.6 }}
+                            />
+                          </g>
+                        );
+                      })}
+                      <g className="gauge-center-info" style={{ pointerEvents: 'none' }}>
+                        <text x={cx} y={cy - 36} textAnchor="middle" style={{ fontSize: '0.98rem', fontWeight: 800, fill: '#1d4ed8' }}>
+                          Loading Class Rankings...
+                        </text>
+                        <text x={cx} y={cy - 16} textAnchor="middle" style={{ fontSize: '0.74rem', fontWeight: 600, fill: '#64748b' }}>
+                          Fetching official standings
                         </text>
                       </g>
-                    );
-                  })}
+                    </>
+                  ) : activeStandingsData.length === 0 ? (
+                    <g className="gauge-center-info" style={{ pointerEvents: 'none' }}>
+                      <text x={cx} y={cy - 36} textAnchor="middle" style={{ fontSize: '0.96rem', fontWeight: 800, fill: '#64748b' }}>
+                        No Standings Yet
+                      </text>
+                      <text x={cx} y={cy - 16} textAnchor="middle" style={{ fontSize: '0.74rem', fontWeight: 600, fill: '#94a3b8' }}>
+                        Awaiting submissions
+                      </text>
+                    </g>
+                  ) : (
+                    <>
+                      {/* Concentric Semi-Circle Arcs */}
+                      {activeStandingsData.map((item, idx) => {
+                        const r = maxRadius - idx * radiusStep;
+                        const dPath = `M ${cx + r} ${cy} A ${r} ${r} 0 0 0 ${cx - r} ${cy}`;
+                        const pathLen = Math.PI * r;
+
+                        const totalRanked = activeStandingsData.length || 1;
+                        const rankProgress = totalRanked === 1 ? 0.85 : Math.max(0.20, 0.88 - ((item.rank - 1) * (0.64 / Math.max(1, totalRanked - 1))));
+                        const scoreRatio = topScore > 0 && item.totalScore > 0 ? (item.totalScore / topScore) : 0;
+                        const progress = item.totalScore > 0
+                          ? Math.max(0.06, Math.min(0.95, scoreRatio * 0.92))
+                          : rankProgress;
+
+                        // Loading Animation Dash Offset logic
+                        const dashOffset = isLoaded ? (pathLen * (1 - progress)) : pathLen;
+
+                        const theta = progress * Math.PI;
+                        const labelX = cx + r * Math.cos(theta);
+                        const labelY = cy - r * Math.sin(theta) - 5;
+
+                        const isDimmed = hoveredIndex !== null && hoveredIndex !== idx;
+                        const isHighlighted = hoveredIndex === idx;
+
+                        return (
+                          <g key={idx} style={{ opacity: isDimmed ? 0.25 : 1, transition: 'opacity 0.3s' }}>
+                            {/* Background track */}
+                            <path d={dPath} className="gauge-track" />
+                            {/* Filled Arc */}
+                            <path
+                              d={dPath}
+                              className={`gauge-arc ${isHighlighted ? 'highlighted' : ''}`}
+                              stroke={`url(#arc-grad-${idx})`}
+                              strokeDasharray={pathLen}
+                              strokeDashoffset={dashOffset}
+                              style={{
+                                cursor: 'pointer',
+                                transition: 'stroke-dashoffset 1.5s cubic-bezier(0.25, 0.8, 0.25, 1)',
+                              }}
+                              onMouseEnter={() => setHoveredIndex(idx)}
+                              onMouseLeave={() => setHoveredIndex(null)}
+                              onClick={() => setSelectedClass(item)}
+                            />
+                            {/* Score Label at tip of arc */}
+                            <text
+                              x={labelX}
+                              y={labelY}
+                              className={`arc-tip-label ${isHighlighted ? 'highlighted' : ''}`}
+                              textAnchor="middle"
+                            >
+                              {item.totalScore > 0
+                                ? (Number.isInteger(item.totalScore) ? item.totalScore.toLocaleString() : item.totalScore.toFixed(1))
+                                : `#${item.rank}`}
+                            </text>
+                          </g>
+                        );
+                      })}
+                    </>
+                  )}
                 </svg>
               </div>
             </div>
@@ -1019,6 +1077,63 @@ export const LandingPage: React.FC = () => {
                       );
                     })}
                   </div>
+                </div>
+              ) : isClassIndexLoading && activeStandingsData.length === 0 ? (
+                <div>
+                  <div className="leaderboard-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                    <h2 className="chart-title" style={{ margin: 0 }}>Class Standings</h2>
+                    <span style={{ fontSize: '0.78rem', color: '#1d4ed8', fontWeight: 700, background: '#eff6ff', padding: '3px 10px', borderRadius: '12px' }}>
+                      Loading Rankings...
+                    </span>
+                  </div>
+
+                  {/* 4 Clean Columns: Rank | Class | Class Submissions | Class Points */}
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: '55px 1fr 140px 100px',
+                    alignItems: 'center',
+                    padding: '8px 12px',
+                    fontSize: '0.74rem',
+                    fontWeight: 800,
+                    color: '#64748b',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    borderBottom: '1.5px solid #e2e8f0',
+                    marginBottom: '6px',
+                  }}>
+                    <span>Rank</span>
+                    <span>Class</span>
+                    <span style={{ textAlign: 'center' }}>Class Submissions</span>
+                    <span style={{ textAlign: 'right' }}>Class Points</span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: '55px 1fr 140px 100px',
+                          alignItems: 'center',
+                          padding: '12px',
+                          borderRadius: '10px',
+                          background: '#f8fafc',
+                          border: '1px solid #f1f5f9',
+                        }}
+                      >
+                        <div className="skeleton-shimmer" style={{ width: '28px', height: '14px', borderRadius: '4px' }}></div>
+                        <div className="skeleton-shimmer" style={{ width: '110px', height: '14px', borderRadius: '4px' }}></div>
+                        <div className="skeleton-shimmer" style={{ width: '56px', height: '18px', borderRadius: '10px', margin: '0 auto' }}></div>
+                        <div className="skeleton-shimmer" style={{ width: '48px', height: '14px', borderRadius: '4px', marginLeft: 'auto' }}></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : activeStandingsData.length === 0 ? (
+                <div style={{ padding: '36px 16px', textAlign: 'center', color: '#64748b' }}>
+                  <div style={{ fontSize: '2rem', marginBottom: '8px' }}>📊</div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#1e293b', margin: 0 }}>No Rankings Available</h3>
+                  <p style={{ fontSize: '0.82rem', marginTop: '4px', color: '#64748b' }}>No class rankings or submissions recorded for this period yet.</p>
                 </div>
               ) : (
                 <div>

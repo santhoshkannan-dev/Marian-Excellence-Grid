@@ -135,6 +135,7 @@ interface AppContextType {
   isInitialized: boolean;
   // Mark moderation & rankings
   classIndexData: ClassIndexEntry[] | null;
+  isClassIndexLoading: boolean;
   smallestClassSize: number;
   fetchClassIndex: (year?: string) => Promise<void>;
   updateClassModeration: (classId: number, numStudents: number, negativePoints: number) => Promise<void>;
@@ -300,6 +301,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   // Mark moderation & class rankings state
   const [classIndexData, setClassIndexData] = useState<ClassIndexEntry[] | null>(null);
+  const [isClassIndexLoading, setIsClassIndexLoading] = useState<boolean>(true);
   const [smallestClassSize, setSmallestClassSize] = useState<number>(0);
 
   const fetchChampions = async () => {
@@ -350,6 +352,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       .catch((err) => console.error("Failed to fetch classes from backend:", err));
 
     fetchChampions();
+    fetchClassIndex();
   }, []);
 
   const [isInitialized, setIsInitialized] = useState<boolean>(false);
@@ -414,6 +417,10 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
               if (data.currentUserId) setCurrentUserId(data.currentUserId);
               if (data.jwtToken) setJwtToken(data.jwtToken);
               if (data.currentUserInfo) updateCurrentUserInfo(data.currentUserInfo);
+              if (data.classIndexData && Array.isArray(data.classIndexData) && data.classIndexData.length > 0) {
+                setClassIndexData(data.classIndexData);
+                setIsClassIndexLoading(false);
+              }
             }
           } catch (jsonErr) {
             console.warn('Invalid JSON in localStorage, clearing cache:', jsonErr);
@@ -468,7 +475,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
           currentRole,
           currentUserId,
           jwtToken,
-          currentUserInfo
+          currentUserInfo,
+          classIndexData,
         };
         localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(data));
       } catch (e) {
@@ -489,7 +497,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     currentRole,
     currentUserId,
     jwtToken,
-    currentUserInfo
+    currentUserInfo,
+    classIndexData
   ]);
 
   const setRole = (role: string) => {
@@ -1952,6 +1961,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   };
 
   const fetchClassIndex = async (year?: string) => {
+    setIsClassIndexLoading(true);
     try {
       const url = year
         ? `http://localhost:8000/api/class-index/?year=${encodeURIComponent(year)}`
@@ -1963,6 +1973,8 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       }
     } catch (e) {
       console.error('Failed to fetch class index:', e);
+    } finally {
+      setIsClassIndexLoading(false);
     }
   };
 
@@ -2064,6 +2076,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         isInitialized,
         // Mark moderation & rankings
         classIndexData,
+        isClassIndexLoading,
         smallestClassSize,
         fetchClassIndex,
         updateClassModeration,

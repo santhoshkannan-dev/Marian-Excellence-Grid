@@ -3178,3 +3178,15 @@ h1, h2, h3, h4, p {
   background: #e2e8f0;
   color: #0f172a;
 }
+
+/* Skeleton Loading Shimmer */
+@keyframes shimmer-pulse {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 0.85; }
+}
+
+.skeleton-shimmer {
+  background: #e2e8f0;
+  animation: shimmer-pulse 1.6s ease-in-out infinite;
+}
+
