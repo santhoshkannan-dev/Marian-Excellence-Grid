@@ -191,22 +191,13 @@ export const LandingPage: React.FC = () => {
     [submissions, activeAcademicYear, users, students]
   );
 
-  // Active Standings ordered strictly by official Class Ranking
+  // Active Standings ordered strictly by Class Points
   const activeStandingsData: StandingItem[] = React.useMemo(() => {
     const palette = ['#4f46e5', '#059669', '#d97706', '#ec4899', '#8b5cf6', '#06b6d4', '#f97316', '#3b82f6', '#10b981', '#ef4444'];
 
     // Priority 1: Official class ranking from classIndexData (/api/class-index/)
     if (classIndexData && classIndexData.length > 0) {
-      const rankedEntries = [...classIndexData.filter((e) => e.rank !== null)].sort(
-        (a, b) => (a.rank as number) - (b.rank as number)
-      );
-      const unrankedEntries = [...classIndexData.filter((e) => e.rank === null)].sort(
-        (a, b) => b.S - a.S
-      );
-
-      const combined = [...rankedEntries, ...unrankedEntries];
-
-      const mapped = combined.map((entry, idx) => {
+      const mapped = classIndexData.map((entry) => {
         const { count, score } = getClassSubmissionsCountAndScore(entry.class_name);
         const fallback = top10FallbackData.find((f) => f.className.toLowerCase() === entry.class_name.toLowerCase());
         const totalSubmissions = count > 0 ? count : (fallback ? fallback.totalSubmissions : 0);
@@ -215,23 +206,33 @@ export const LandingPage: React.FC = () => {
           ? entry.M
           : (entry.S > 0 ? entry.S : (score > 0 ? score : (fallback ? fallback.totalScore : 0)));
         const totalScore = Math.max(0, rawScore);
-        const rank = entry.rank !== null ? entry.rank : idx + 1;
 
         return {
-          rank,
+          rank: 0,
           className: entry.class_name,
           department: entry.department || 'General',
           totalSubmissions,
           totalScore,
           percentage: 0,
-          color: palette[idx % palette.length],
+          color: palette[0],
           M: entry.M,
           S: entry.S,
           P: entry.P,
         };
       });
 
-      const top10 = mapped.slice(0, 10);
+      // Rank strictly based on class points (totalScore) descending, then totalSubmissions
+      mapped.sort((a, b) => {
+        if (b.totalScore !== a.totalScore) return b.totalScore - a.totalScore;
+        return b.totalSubmissions - a.totalSubmissions;
+      });
+
+      const top10 = mapped.slice(0, 10).map((item, idx) => ({
+        ...item,
+        rank: idx + 1,
+        color: palette[idx % palette.length],
+      }));
+
       const grandTotal = top10.reduce((sum, item) => sum + item.totalScore, 0) || 1;
       return top10.map((item) => ({
         ...item,
@@ -276,8 +277,9 @@ export const LandingPage: React.FC = () => {
       }));
     }
 
-    // Priority 3: Curated Top 10 fallback data
-    return top10FallbackData.map((f, idx) => ({ ...f, color: palette[idx % palette.length] }));
+    // Priority 3: Curated Top 10 fallback data sorted by points
+    const sortedFallback = [...top10FallbackData].sort((a, b) => b.totalScore - a.totalScore);
+    return sortedFallback.map((f, idx) => ({ ...f, rank: idx + 1, color: palette[idx % palette.length] }));
   }, [classIndexData, classes, getClassSubmissionsCountAndScore]);
 
   // Helper to extract criteria category & title
