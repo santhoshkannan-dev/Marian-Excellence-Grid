@@ -1256,7 +1256,7 @@ class ClassDetailView(APIView):
                 return Response({"error": "num_students must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
         if 'negative_points' in request.data:
             try:
-                cls.negative_points = float(request.data['negative_points'])
+                cls.negative_points = abs(float(request.data['negative_points']))
                 update_fields.append('negative_points')
             except (ValueError, TypeError):
                 return Response({"error": "negative_points must be a number"}, status=status.HTTP_400_BAD_REQUEST)
@@ -1345,7 +1345,7 @@ class ClassDetailView(APIView):
                 return Response({"error": "num_students must be an integer"}, status=status.HTTP_400_BAD_REQUEST)
         if 'negative_points' in request.data:
             try:
-                cls.negative_points = float(request.data['negative_points'])
+                cls.negative_points = abs(float(request.data['negative_points']))
             except (ValueError, TypeError):
                 return Response({"error": "negative_points must be a number"}, status=status.HTTP_400_BAD_REQUEST)
         if 'name' in request.data:

@@ -1589,10 +1589,14 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
   const updateClass = async (id: number, data: any) => {
     try {
+      const sanitizedData = { ...data };
+      if (sanitizedData.negative_points !== undefined) {
+        sanitizedData.negative_points = Math.max(0, Math.abs(Number(sanitizedData.negative_points) || 0));
+      }
       const res = await fetch(`http://localhost:8000/api/auth/classes/${id}/`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(sanitizedData),
       });
       if (res.ok) {
         const updated = await res.json();
@@ -1931,15 +1935,16 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   // -------------------------------------------------------
 
   const updateClassModeration = async (classId: number, numStudents: number, negativePoints: number) => {
+    const positivePenalty = Math.max(0, Math.abs(Number(negativePoints) || 0));
     // Optimistic update in local classes state
     setClasses(prev =>
-      prev.map(c => c.id === classId ? { ...c, num_students: numStudents, negative_points: negativePoints } : c)
+      prev.map(c => c.id === classId ? { ...c, num_students: numStudents, negative_points: positivePenalty } : c)
     );
     try {
       await fetch(`http://localhost:8000/api/auth/classes/${classId}/`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ num_students: numStudents, negative_points: negativePoints }),
+        body: JSON.stringify({ num_students: numStudents, negative_points: positivePenalty }),
       });
     } catch (e) {
       console.error('Failed to update class moderation fields:', e);

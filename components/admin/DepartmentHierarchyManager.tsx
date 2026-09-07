@@ -852,7 +852,7 @@ export function DepartmentHierarchyManager() {
                                   courseClasses.map((cls) => {
                                     const edits = classEdits[cls.id] || {};
                                     const currentN = edits.num_students !== undefined ? edits.num_students : (cls.num_students ?? 50);
-                                    const currentP = edits.negative_points !== undefined ? edits.negative_points : (cls.negative_points ?? 0);
+                                    const currentP = Math.max(0, Math.abs(edits.negative_points !== undefined ? edits.negative_points : (cls.negative_points ?? 0)));
                                     const currentAdvisor = edits.classTeacher !== undefined ? edits.classTeacher : (cls.classTeacher || cls.class_teacher_email || '');
                                     const hasPendingEdits =
                                       edits.num_students !== undefined ||
@@ -992,12 +992,13 @@ export function DepartmentHierarchyManager() {
                                               min={0}
                                               step={0.1}
                                               value={currentP}
-                                              onChange={(e) =>
+                                              onChange={(e) => {
+                                                const val = e.target.value === '' ? 0 : Math.max(0, Math.abs(Number(e.target.value)));
                                                 setClassEdits((prev) => ({
                                                   ...prev,
-                                                  [cls.id]: { ...prev[cls.id], negative_points: Number(e.target.value) },
-                                                }))
-                                              }
+                                                  [cls.id]: { ...prev[cls.id], negative_points: val },
+                                                }));
+                                              }}
                                               style={{
                                                 width: '80px',
                                                 padding: '6px 8px',
@@ -1410,7 +1411,7 @@ export function DepartmentHierarchyManager() {
                           step={0.1}
                           className="input"
                           value={classForm.negative_points}
-                          onChange={(e) => setClassForm({ ...classForm, negative_points: Number(e.target.value) })}
+                          onChange={(e) => setClassForm({ ...classForm, negative_points: e.target.value === '' ? 0 : Math.max(0, Math.abs(Number(e.target.value))) })}
                         />
                       </div>
                     </div>
