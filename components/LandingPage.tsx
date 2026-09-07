@@ -802,16 +802,18 @@ export const LandingPage: React.FC = () => {
                           onMouseLeave={() => setHoveredIndex(null)}
                           onClick={() => setSelectedClass(item)}
                         />
-                        {/* Submissions count label at the tip of each arc */}
-                        <text
-                          x={labelX}
-                          y={labelY}
-                          className={`arc-tip-label ${isHighlighted ? 'highlighted' : ''}`}
-                          textAnchor="middle"
-                          style={{ fill: isHighlighted ? '#1d4ed8' : '#64748b' }}
-                        >
-                          {item.totalSubmissions} {item.totalSubmissions === 1 ? 'sub' : 'subs'}
-                        </text>
+                        {/* Submissions count label at the tip of arc on hover */}
+                        {isHighlighted && (
+                          <text
+                            x={labelX}
+                            y={labelY}
+                            className="arc-tip-label highlighted"
+                            textAnchor="middle"
+                            style={{ fill: '#1d4ed8', fontWeight: 800 }}
+                          >
+                            {item.totalSubmissions} {item.totalSubmissions === 1 ? 'sub' : 'subs'}
+                          </text>
+                        )}
                       </g>
                     );
                   })}
