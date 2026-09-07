@@ -115,6 +115,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
     const catId = String(currentCategory.id || '').toLowerCase().trim();
     const isCareerAdvancement = catName.includes('career advancement') || catCode === 'cat-career-advancement' || catId === 'cat-career-advancement' || catId === '11';
     const isLeadership = catName.includes('leadership') || catCode === 'cat-leadership' || catId === 'cat-leadership' || catId === '8';
+    const isSocialResponsibility = catName.includes('social responsibilit') || catCode === 'cat-social-responsibility' || catId === 'cat-social-responsibility' || catId === '9';
 
     let items = currentCategory.items;
 
@@ -129,6 +130,12 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
         const title = String(i.title || '').toLowerCase().trim();
         return !title.includes('innovative') && !title.includes('sustainable') && title !== 'any other';
       });
+    }
+
+    if (isSocialResponsibility && !isStudentRep) {
+      items = items.filter((i) =>
+        String(i.title || '').toLowerCase().includes('participation')
+      );
     }
 
     return items;
