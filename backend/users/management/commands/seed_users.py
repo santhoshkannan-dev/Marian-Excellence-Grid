@@ -10,7 +10,8 @@ class Command(BaseCommand):
 
         # 1. Seed Academic Years
         academic_years_data = [
-            {"year": "2025-2026", "is_active": True},
+            {"year": "2026-2027", "is_active": True},
+            {"year": "2025-2026", "is_active": False},
             {"year": "2024-2025", "is_active": False},
             {"year": "2023-2024", "is_active": False},
         ]

@@ -257,10 +257,12 @@ def get_active_year_start():
     Falls back to current calendar year if none is active.
     """
     try:
-        active = AcademicYear.objects.get(is_active=True)
-        return int(active.year.split('-')[0])
-    except (AcademicYear.DoesNotExist, ValueError, IndexError):
-        return datetime.now().year
+        active = AcademicYear.objects.filter(is_active=True).order_by('-year').first()
+        if active and active.year:
+            return int(active.year.split('-')[0])
+    except (ValueError, IndexError, Exception):
+        pass
+    return datetime.now().year
 
 
 def get_year_roman(year_number):
@@ -417,26 +419,27 @@ def allocate_student_from_email(user):
         user.class_name = class_obj
 
     else:
-        # Fallback path: no DB course found — use get_or_create with inferred dept/class
+        # Fallback path: no DB course found — use lookup with inferred dept/class safely
         dept_code = parsed['department_code']
         dept_name = parsed['department_name']
         class_name = parsed['class_name']
 
-        dept_obj, _ = Department.objects.get_or_create(
-            code=dept_code,
-            defaults={'name': dept_name}
-        )
-        if dept_obj.name != dept_name:
-            dept_obj.name = dept_name
-            dept_obj.save()
+        dept_obj = Department.objects.filter(code=dept_code).first() or Department.objects.filter(name=dept_name).first()
+        if not dept_obj:
+            try:
+                dept_obj, _ = Department.objects.get_or_create(
+                    code=dept_code,
+                    defaults={'name': dept_name}
+                )
+            except Exception:
+                dept_obj = Department.objects.filter(name=dept_name).first() or Department.objects.filter(code=dept_code).first()
 
-        class_obj, _ = Class.objects.get_or_create(
-            name=class_name,
-            defaults={'department': dept_obj}
-        )
-        if class_obj.department != dept_obj:
+        class_obj = Class.objects.filter(name=class_name).first()
+        if not class_obj:
+            class_obj = Class.objects.create(name=class_name, department=dept_obj)
+        elif dept_obj and class_obj.department != dept_obj:
             class_obj.department = dept_obj
-            class_obj.save()
+            class_obj.save(update_fields=['department'])
 
         user.department = dept_obj
         user.class_name = class_obj
