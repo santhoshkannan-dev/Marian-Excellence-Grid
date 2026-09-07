@@ -1294,10 +1294,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                       <select
                         className="select"
                         value={academicSubmissionType}
-                        onChange={(e) => setAcademicSubmissionType(e.target.value as 'Sem Result' | 'SAVE Sem Result')}
+                        onChange={(e) => setAcademicSubmissionType(e.target.value as 'Sem Result')}
                       >
                         <option value="Sem Result">Sem Result (End Semester Examination)</option>
-                        <option value="SAVE Sem Result">SAVE Sem Result (Supplementary / Special Exam)</option>
                       </select>
                     </div>
                   ) : (
@@ -1335,7 +1334,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                   >
                     <span>⚠️</span>
                     <div>
-                      <strong>One-Time Limit Reached:</strong> &ldquo;{academicSubmissionType}&rdquo; has already been submitted for active evaluation cycle. Both <em>Sem Result</em> and <em>SAVE Sem Result</em> can only be updated once per evaluation cycle.
+                      <strong>One-Time Limit Reached:</strong> &ldquo;{academicSubmissionType}&rdquo; has already been submitted for active evaluation cycle. <em>Sem Result</em> can only be updated once per evaluation cycle.
                     </div>
                   </div>
                 )}
@@ -1345,7 +1344,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                   <div style={{ padding: '20px', background: 'rgba(99, 102, 241, 0.04)', border: '1.5px solid rgba(99, 102, 241, 0.2)', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
                       <h4 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--primary)', margin: 0 }}>
-                        📊 Academic Mark Breakdown ({academicSubmissionType})
+                        📊 Class Pass Percentage % ({academicSubmissionType})
                       </h4>
                       <span className="badge badge-verified" style={{ padding: '6px 14px', fontSize: '0.82rem', background: '#e0e7ff', color: '#3730a3', border: '1px solid #c7d2fe' }}>
                         Total Students: {count90Above + count80to90 + count70to80 + failCount}
@@ -1372,7 +1371,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                         const label80 = countItems[1]?.title || '80% to 90%';
                         const label70 = countItems[2]?.title || '70% to 80%';
                         const labelFail = failItem?.title || 'Fail';
-                        const labelPass = passItem?.title || 'Class Pass %';
+                        const labelPass = passItem?.title || 'Class Pass Percentage %';
 
                         return (
                           <>
@@ -1384,7 +1383,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 type="number"
                                 className="input"
                                 min={0}
-                                value={count90Above}
+                                placeholder="0"
+                                value={count90Above === 0 ? '' : count90Above}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => setCount90Above(Math.max(0, parseInt(e.target.value) || 0))}
                                 required
                               />
@@ -1398,7 +1399,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 type="number"
                                 className="input"
                                 min={0}
-                                value={count80to90}
+                                placeholder="0"
+                                value={count80to90 === 0 ? '' : count80to90}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => setCount80to90(Math.max(0, parseInt(e.target.value) || 0))}
                                 required
                               />
@@ -1412,7 +1415,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 type="number"
                                 className="input"
                                 min={0}
-                                value={count70to80}
+                                placeholder="0"
+                                value={count70to80 === 0 ? '' : count70to80}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => setCount70to80(Math.max(0, parseInt(e.target.value) || 0))}
                                 required
                               />
@@ -1426,7 +1431,9 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 type="number"
                                 className="input"
                                 min={0}
-                                value={failCount}
+                                placeholder="0"
+                                value={failCount === 0 ? '' : failCount}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => setFailCount(Math.max(0, parseInt(e.target.value) || 0))}
                                 required
                               />
@@ -1442,12 +1449,13 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 className="input"
                                 min={0}
                                 max={100}
-                                placeholder="e.g. 95.5"
+                                placeholder="0.00"
                                 value={passPercentage > 0 ? passPercentage : (
                                   (count90Above + count80to90 + count70to80 + failCount) > 0
                                     ? parseFloat(((((count90Above + count80to90 + count70to80) / (count90Above + count80to90 + count70to80 + failCount)) * 100)).toFixed(2))
-                                    : 0
+                                    : ''
                                 )}
+                                onFocus={(e) => e.target.select()}
                                 onChange={(e) => setPassPercentage(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
                                 required
                               />
