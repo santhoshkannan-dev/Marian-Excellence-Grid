@@ -40,15 +40,27 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
     criteriaCatalog,
     currentUserInfo,
     classes,
-    users
+    users,
+    classIndexData,
+    fetchClassIndex,
+    smallestClassSize,
+    activeAcademicYear,
   } = useApp();
 
   const activeTab = view || activePage || 'dashboard';
+
+  // Fetch official moderated class index / rankings on mount & academic year change
+  React.useEffect(() => {
+    if (fetchClassIndex) {
+      fetchClassIndex(activeAcademicYear || undefined);
+    }
+  }, [activeAcademicYear, fetchClassIndex]);
 
   // ----------------------------------------------------
   // QUEUE, MODAL & TOAST STATE
   // ----------------------------------------------------
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isScoreHovered, setIsScoreHovered] = useState(false);
   const [queueIndex, setQueueIndex] = useState(0);
   const [previewModalDoc, setPreviewModalDoc] = useState<VerificationDocItem | null>(null);
   const [modalRemarks, setModalRemarks] = useState('');
@@ -110,9 +122,13 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
     return norm1 === norm2 || c1.toLowerCase().trim() === c2.toLowerCase().trim();
   };
 
-  const rawClass = (currentUserInfo as any)?.class_name_display || (currentUserInfo as any)?.className || (currentUserInfo as any)?.class_name;
-  const teacherClass = (typeof rawClass === 'string' && isNaN(Number(rawClass))) ? rawClass : 'II MCA';
-  const teacherClassObject = classes?.find((c: any) => c.name === teacherClass);
+  const classByTeacherEmail = classes?.find((c: any) =>
+    (c.classTeacher && currentUserInfo?.email && c.classTeacher.toLowerCase() === currentUserInfo.email.toLowerCase()) ||
+    (c.classTeacherEmail && currentUserInfo?.email && c.classTeacherEmail.toLowerCase() === currentUserInfo.email.toLowerCase())
+  );
+  const rawClass = (currentUserInfo as any)?.class_name_display || (currentUserInfo as any)?.className || (currentUserInfo as any)?.class_name || classByTeacherEmail?.name;
+  const teacherClass = (typeof rawClass === 'string' && isNaN(Number(rawClass))) ? rawClass : (classByTeacherEmail?.name || 'II MCA');
+  const teacherClassObject = classes?.find((c: any) => c.name === teacherClass) || classByTeacherEmail;
   const teacherDepartment = teacherClassObject?.department || currentUserInfo?.department || 'The Post-Graduate Department of Computer Applications';
 
   // Base list of students belonging to this teacher's class
@@ -132,6 +148,16 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
 
   const classStudentIds = new Set(classStudents.map(s => s.id));
   const classSubmissions = submissions.filter(s => classStudentIds.has(s.studentId));
+
+  // Match class in official Class Index / Moderation data
+  const matchingClassIndexEntry = React.useMemo(() => {
+    if (!classIndexData || !teacherClass) return null;
+    const normTarget = teacherClass.trim().toLowerCase();
+    return classIndexData.find((e) => {
+      const eName = (e.class_name || '').trim().toLowerCase();
+      return eName === normTarget || isSameClass(eName, teacherClass);
+    }) || null;
+  }, [classIndexData, teacherClass]);
 
   // ----------------------------------------------------
   // METRIC COUNTS
@@ -170,17 +196,58 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
     return (criteriaItem.marks || 0) * count;
   };
 
-  // Calculate total points earned by class vs target
+  // Calculate total raw points earned by class from evaluated/locked submissions (S)
   const classTotalScore = classSubmissions.reduce((sum, s) => {
     if (['Approved', 'Verified', 'Evaluated', 'Locked'].includes(s.status)) {
       return sum + getSubmissionPoints(s);
     }
     return sum;
   }, 0);
-  
-  const totalScoreVal = classTotalScore;
+
+  // ----------------------------------------------------
+  // MODERATION FORMULA M (INDEX) CALCULATION
+  // Formula: M = (S - P) / (N^2) * (1 + 100 * (N - n))
+  //   S = sum of marks on evaluated/locked submissions
+  //   P = Class.negative_points (penalties)
+  //   N = Class.num_students (class size)
+  //   n = smallestClassSize (benchmark, default 30)
+  // ----------------------------------------------------
+  const classN = matchingClassIndexEntry?.N && matchingClassIndexEntry.N > 0
+    ? matchingClassIndexEntry.N
+    : (teacherClassObject?.num_students && teacherClassObject.num_students > 0
+      ? teacherClassObject.num_students
+      : (classStudents.length > 0 ? classStudents.length : 1));
+
+  const classP = matchingClassIndexEntry?.P !== undefined
+    ? matchingClassIndexEntry.P
+    : (teacherClassObject?.negative_points || 0);
+
+  const benchmarkN = matchingClassIndexEntry?.n !== undefined
+    ? matchingClassIndexEntry.n
+    : (smallestClassSize || 30);
+
+  const classS = matchingClassIndexEntry?.S !== undefined
+    ? matchingClassIndexEntry.S
+    : classTotalScore;
+
+  const computedM = classN > 0
+    ? ((classS - classP) / (classN * classN)) * (1 + 100 * (classN - benchmarkN))
+    : 0;
+
+  const moderatedM = matchingClassIndexEntry && matchingClassIndexEntry.M !== null && matchingClassIndexEntry.M !== undefined
+    ? matchingClassIndexEntry.M
+    : Math.max(0, computedM);
+
+  const classRank = matchingClassIndexEntry?.rank ?? null;
+  const totalScoreVal = moderatedM;
   const targetScoreVal = classStudents.length > 0 ? classStudents.length * 20 : 1000;
-  const progressPercent = ((totalScoreVal / targetScoreVal) * 100).toFixed(1);
+  const progressPercent = ((classTotalScore / targetScoreVal) * 100).toFixed(1);
+
+  // Formatted values for hover display: showing ONLY S, P, and M
+  const sFormatted = typeof classS === 'number' ? (Number.isInteger(classS) ? String(classS) : classS.toFixed(2)) : String(classS);
+  const pFormatted = typeof classP === 'number' ? (Number.isInteger(classP) ? String(classP) : classP.toFixed(2)) : String(classP);
+  const mFormatted = typeof moderatedM === 'number' ? moderatedM.toFixed(4) : String(moderatedM);
+  const scoreHoverOnlyText = `S (Evaluated Marks): ${sFormatted}\nP (Penalty): ${pFormatted}\nM (Index): ${mFormatted}`;
 
   // Helper function to get student status and styling
   const getProgressDetails = (percent: number) => {
@@ -946,9 +1013,37 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
               <h1 style={{ fontSize: '2.1rem', fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: '4px' }}>
                 Teacher Dashboard
               </h1>
-              <p style={{ fontSize: '1rem', color: '#475569', fontWeight: 500 }}>
-                Class Performance: {teacherClass || 'BSc CS A'}
-              </p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginTop: '4px' }}>
+                <span style={{ fontSize: '1rem', color: '#475569', fontWeight: 600 }}>
+                  Class Performance: <strong>{teacherClass || 'BSc CS A'}</strong>
+                </span>
+                {classRank && (
+                  <span style={{
+                    fontSize: '0.78rem',
+                    fontWeight: 800,
+                    color: classRank <= 3 ? '#92400e' : '#1e40af',
+                    background: classRank <= 3 ? '#fef3c7' : '#eff6ff',
+                    padding: '2px 10px',
+                    borderRadius: '12px',
+                    border: `1px solid ${classRank <= 3 ? '#fde68a' : '#bfdbfe'}`
+                  }}>
+                    {classRank === 1 ? '🥇 Rank #1' : classRank === 2 ? '🥈 Rank #2' : classRank === 3 ? '🥉 Rank #3' : `Rank #${classRank}`}
+                  </span>
+                )}
+                <span style={{
+                  fontSize: '0.78rem',
+                  fontWeight: 800,
+                  color: '#5b21b6',
+                  background: '#ede9fe',
+                  padding: '2px 10px',
+                  borderRadius: '12px',
+                  border: '1px solid #ddd6fe'
+                }}
+                title={scoreHoverOnlyText}
+                >
+                  M (Index): {moderatedM.toFixed(4)}
+                </span>
+              </div>
             </div>
 
             {/* Four KPI Cards Grid */}
@@ -1087,49 +1182,137 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
                 </div>
               </div>
 
-              {/* Card 4: TOTAL SCORE */}
+              {/* Card 4: TOTAL SCORE (MODERATED M INDEX) */}
               <div
                 style={{
                   background: '#ffffff',
                   borderRadius: '20px',
                   padding: '24px 26px',
-                  border: '1px solid rgba(0,0,0,0.05)',
-                  boxShadow: '0 4px 20px rgba(0,0,0,0.03)',
+                  border: '1.5px solid rgba(124, 58, 237, 0.15)',
+                  boxShadow: isScoreHovered ? '0 10px 30px rgba(124, 58, 237, 0.12)' : '0 4px 20px rgba(124, 58, 237, 0.05)',
                   display: 'flex',
                   flexDirection: 'column',
                   justifyContent: 'space-between',
                   minHeight: '140px',
+                  position: 'relative',
+                  cursor: 'pointer',
                   transition: 'transform 0.2s ease, box-shadow 0.2s ease'
                 }}
+                title={scoreHoverOnlyText}
+                onMouseEnter={() => setIsScoreHovered(true)}
+                onMouseLeave={() => setIsScoreHovered(false)}
               >
-                <div style={{ fontSize: '0.76rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                  Total Score
+                {/* Floating Tooltip Box on Hover: Showing ONLY S, P, and M */}
+                {isScoreHovered && (
+                  <div
+                    style={{
+                      position: 'absolute',
+                      bottom: 'calc(100% + 10px)',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      background: '#0f172a',
+                      color: '#ffffff',
+                      padding: '12px 18px',
+                      borderRadius: '14px',
+                      boxShadow: '0 14px 35px rgba(15, 23, 42, 0.3)',
+                      zIndex: 100,
+                      minWidth: '240px',
+                      pointerEvents: 'none',
+                      fontSize: '0.82rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.12)'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px' }}>
+                      <span style={{ color: '#94a3b8', fontWeight: 600 }}>S (Evaluated Marks)</span>
+                      <span style={{ fontWeight: 800, color: '#34d399', fontSize: '0.9rem' }}>{sFormatted}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px' }}>
+                      <span style={{ color: '#94a3b8', fontWeight: 600 }}>P (Penalty)</span>
+                      <span style={{ fontWeight: 800, color: '#f87171', fontSize: '0.9rem' }}>{pFormatted}</span>
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '14px', borderTop: '1px solid rgba(255, 255, 255, 0.15)', paddingTop: '6px', marginTop: '2px' }}>
+                      <span style={{ color: '#c4b5fd', fontWeight: 700 }}>M (Index)</span>
+                      <span style={{ fontWeight: 900, color: '#a78bfa', fontSize: '0.95rem' }}>{mFormatted}</span>
+                    </div>
+                    {/* Tooltip pointer arrow */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        bottom: '-6px',
+                        left: '50%',
+                        transform: 'translateX(-50%) rotate(45deg)',
+                        width: '12px',
+                        height: '12px',
+                        background: '#0f172a',
+                        borderRight: '1px solid rgba(255, 255, 255, 0.12)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.12)'
+                      }}
+                    />
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.76rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+                    Total Score
+                  </span>
+                  <span style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 800,
+                    color: '#5b21b6',
+                    background: '#ede9fe',
+                    padding: '3px 9px',
+                    borderRadius: '8px',
+                    border: '1px solid #ddd6fe',
+                    letterSpacing: '0.02em',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px'
+                  }}>
+                    <span>⚖️</span>
+                    <span>M (Index)</span>
+                  </span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
                   <div>
-                    <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', lineHeight: 1.1 }}>
-                      {totalScoreVal.toFixed(0)} / {targetScoreVal.toFixed(0)}
+                    <div style={{ fontSize: '1.85rem', fontWeight: 900, color: '#0f172a', lineHeight: 1.1, display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                      <span>{moderatedM.toFixed(4)}</span>
+                      <span style={{ fontSize: '0.84rem', fontWeight: 800, color: '#6d28d9' }}>M</span>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500, marginTop: '3px' }}>
-                      {progressPercent}% completed
+                    <div style={{ fontSize: '0.76rem', color: '#64748b', fontWeight: 600, marginTop: '5px' }}>
+                      {classRank ? (
+                        <span style={{ color: classRank <= 3 ? '#b45309' : '#1d4ed8', fontWeight: 700 }}>
+                          {classRank === 1 ? '🥇 Rank #1 in College' : classRank === 2 ? '🥈 Rank #2 in College' : classRank === 3 ? '🥉 Rank #3 in College' : `Rank #${classRank} in College`}
+                        </span>
+                      ) : (
+                        <span>Formula M Applied</span>
+                      )}
+                      <span style={{ margin: '0 4px', color: '#cbd5e1' }}>•</span>
+                      <span>Raw S: {classS.toFixed(0)} pts</span>
                     </div>
                   </div>
-                  {/* Circular Grade Badge */}
+                  {/* Circular Rank / Moderation Badge */}
                   <div
                     style={{
-                      width: '50px',
-                      height: '50px',
+                      width: '52px',
+                      height: '52px',
                       borderRadius: '50%',
-                      border: '3.5px solid #0f766e',
+                      border: classRank && classRank <= 3 ? '3.5px solid #f59e0b' : '3.5px solid #7c3aed',
+                      background: classRank && classRank <= 3 ? '#fffbeb' : '#f5f3ff',
                       display: 'flex',
+                      flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: '#0f766e',
+                      color: classRank && classRank <= 3 ? '#b45309' : '#6d28d9',
                       fontWeight: 800,
-                      fontSize: '1.15rem'
+                      fontSize: classRank ? (classRank <= 3 ? '1.1rem' : '0.92rem') : '1rem',
+                      boxShadow: '0 4px 12px rgba(124, 58, 237, 0.12)'
                     }}
+                    title={scoreHoverOnlyText}
                   >
-                    A+
+                    {classRank ? (classRank === 1 ? '🥇' : classRank === 2 ? '🥈' : classRank === 3 ? '🥉' : `#${classRank}`) : 'M'}
                   </div>
                 </div>
               </div>
