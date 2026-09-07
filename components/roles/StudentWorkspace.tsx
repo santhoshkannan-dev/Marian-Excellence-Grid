@@ -883,17 +883,27 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
     }
 
     if (!finalDescription) {
-      alert("Please enter a Description for the activity before submitting.");
-      return;
+      finalDescription = `${currentItem?.title || currentCategory?.category || 'Activity Submission'}`;
     }
 
+    const isDriveUrl = (str: string) => {
+      const s = str.trim().toLowerCase();
+      return (s.startsWith('http://') || s.startsWith('https://')) &&
+        (s.includes('drive.google.com') || s.includes('docs.google.com'));
+    };
+
     if (isProgramsOrganized && !eventId.trim() && !proofFile.trim()) {
-      alert("Please provide an Event ID or Proof Document link before submitting.");
+      alert("Please provide an Event ID or Google Drive proof link before submitting.");
       return;
     }
 
     if (!isProgramsOrganized && !proofFile.trim()) {
-      alert("Please provide a Proof Document link or reference before submitting.");
+      alert("Please provide a Google Drive proof link before submitting.");
+      return;
+    }
+
+    if (proofFile.trim() && !isLinkedInItem && !isDriveUrl(proofFile)) {
+      alert("Please provide a valid Google Drive link URL (e.g., https://drive.google.com/...) as proof document.");
       return;
     }
 
@@ -1851,31 +1861,31 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                           Upload Proof to Google Drive
                         </a>
                         <input
-                          type="text"
+                          type="url"
                           className="input"
                           style={{ flex: 1, minWidth: '220px' }}
-                          placeholder="Paste Google Drive link or document reference..."
+                          placeholder="Paste Google Drive link (e.g. https://drive.google.com/...)..."
                           value={proofFile}
                           onChange={(e) => setProofFile(e.target.value)}
                           required
                         />
                       </div>
                       <p className="muted" style={{ fontSize: '0.78rem', marginTop: '6px' }}>
-                        Click the button above to upload your document to Google Drive, then paste the file link or reference here.
+                        Click the button above to upload your document to Google Drive, then paste the file share link here.
                       </p>
                     </div>
                   )}
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Description</label>
+                  <label className="form-label">Description <span className="muted" style={{ fontWeight: 400, fontSize: '0.82rem' }}>(Optional)</span></label>
                   <textarea
                     className="textarea"
                     rows={4}
-                    placeholder="Describe the activity, details, dates, and achievements..."
+                    placeholder="Describe the activity, details, dates, and achievements (Optional)..."
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
-                    required
+                    required={false}
                   />
                 </div>
 
