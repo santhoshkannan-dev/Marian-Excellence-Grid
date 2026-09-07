@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { Submission, CriteriaItem } from '@/data/initialData';
+import { toast } from 'react-toastify';
 
 interface StudentWorkspaceProps {
   view?: 'dashboard' | 'submit' | 'submissions' | 'verification' | 'profile';
@@ -795,63 +796,63 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
       currentCategory?.category.toLowerCase().trim().includes('prize');
 
     if (isAcademicCategory && existingAcademicSubmission && !editingSubId) {
-      alert(`"${academicSubmissionType}" has already been updated for this evaluation cycle. Only one submission per type is allowed.`);
+      toast.warning(`"${academicSubmissionType}" has already been updated for this evaluation cycle. Only one submission per type is allowed.`);
       return;
     }
 
     if (isOnlineCourses) {
       if (onlineCourseSubmissionsCount >= 3 && !editingSubId) {
-        alert("A maximum of 3 online courses can be submitted per student. You have already reached the submission limit (3/3).");
+        toast.warning("A maximum of 3 online courses can be submitted per student. You have already reached the submission limit (3/3).");
         return;
       }
       if (!startDate || !endDate) {
-        alert("Please select both a Starting Date and an End Date for the online course.");
+        toast.error("Please select both a Starting Date and an End Date for the online course.");
         return;
       }
     }
 
     if (isInternshipsCategory) {
       if (!startDate || !endDate) {
-        alert("Please select both a Starting Date and an End Date for the internship.");
+        toast.error("Please select both a Starting Date and an End Date for the internship.");
         return;
       }
     }
 
     if (isStartups && status === 'Submitted') {
       if (!startupName.trim() || !startupDate || !startupGovtId.trim()) {
-        alert("Please enter Startup Name, Registration Date, and Government Registration ID before submitting.");
+        toast.error("Please enter Startup Name, Registration Date, and Government Registration ID before submitting.");
         return;
       }
     }
 
     if (isResearch && status === 'Submitted') {
       if (!researchSubItem) {
-        alert("Please select a Sub Item for the Research activity before submitting.");
+        toast.error("Please select a Sub Item for the Research activity before submitting.");
         return;
       }
     }
 
     if (isPrizes && status === 'Submitted') {
       if (!prizesSubItem) {
-        alert("Please select a Sub Item for the Prize activity before submitting.");
+        toast.error("Please select a Sub Item for the Prize activity before submitting.");
         return;
       }
     }
 
     if (isProgramsOrganized && status === 'Submitted') {
       if (!eventName.trim()) {
-        alert("Please enter the Name of Event before submitting.");
+        toast.error("Please enter the Name of Event before submitting.");
         return;
       }
     }
 
     if (isCompetitiveExamsCategory || isUpscExamItem) {
       if (isUpscExamItem && upscExamSubmissionsCount >= 3 && !editingSubId) {
-        alert("Maximum 3 submissions allowed for UPSC / PSC Exam Participation. You have reached the submission limit (3/3).");
+        toast.warning("Maximum 3 submissions allowed for UPSC / PSC Exam Participation. You have reached the submission limit (3/3).");
         return;
       }
       if (!examDate) {
-        alert("Please select the Exam Date for the competitive exam.");
+        toast.error("Please select the Exam Date for the competitive exam.");
         return;
       }
     }
@@ -893,17 +894,17 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
     };
 
     if (isProgramsOrganized && !eventId.trim() && !proofFile.trim()) {
-      alert("Please provide an Event ID or Google Drive proof link before submitting.");
+      toast.error("Please provide an Event ID or Google Drive proof link before submitting.");
       return;
     }
 
     if (!isProgramsOrganized && !proofFile.trim()) {
-      alert("Please provide a Google Drive proof link before submitting.");
+      toast.error("Please provide a Google Drive proof link before submitting.");
       return;
     }
 
     if (proofFile.trim() && !isLinkedInItem && !isDriveUrl(proofFile)) {
-      alert("Please provide a valid Google Drive link URL (e.g., https://drive.google.com/...) as proof document.");
+      toast.error("Please provide a valid Google Drive link URL (e.g., https://drive.google.com/...) as proof document.");
       return;
     }
 
@@ -991,18 +992,18 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
     // Enforce Admin Settings: Submission Status & Submission Time Window
     if (status === 'Submitted') {
       if (!submissionOpen) {
-        alert('Activity submissions are currently CLOSED by system administrator.');
+        toast.error('Activity submissions are currently CLOSED by system administrator.');
         return;
       }
 
       if (submissionWindowStart || submissionWindowEnd) {
         const now = new Date();
         if (submissionWindowStart && new Date(submissionWindowStart) > now) {
-          alert(`Submissions have not opened yet. Opening time: ${new Date(submissionWindowStart).toLocaleString()}`);
+          toast.warning(`Submissions have not opened yet. Opening time: ${new Date(submissionWindowStart).toLocaleString()}`);
           return;
         }
         if (submissionWindowEnd && new Date(submissionWindowEnd) < now) {
-          alert(`Submissions closed at ${new Date(submissionWindowEnd).toLocaleString()}`);
+          toast.error(`Submissions closed at ${new Date(submissionWindowEnd).toLocaleString()}`);
           return;
         }
       }

@@ -80,7 +80,7 @@ export default function ChampionsManagementPage() {
       });
 
       if (res.ok) {
-        alert(`Champion (${category}) inserted successfully!`);
+        toast.success(`Champion (${category}) inserted successfully!`);
         setTeamName('');
         setScore('');
         setImageFile(null);
@@ -88,11 +88,11 @@ export default function ChampionsManagementPage() {
       } else {
         const errData = await res.json().catch(() => ({}));
         const errMsg = typeof errData === 'object' ? JSON.stringify(errData) : 'Failed to add champion.';
-        alert(`Failed to add champion: ${errMsg}`);
+        toast.error(`Failed to add champion: ${errMsg}`);
       }
     } catch (err) {
       console.error(err);
-      alert('Error adding champion.');
+      toast.error('Error adding champion.');
     } finally {
       setIsSubmitting(false);
     }

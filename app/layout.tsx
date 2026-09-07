@@ -20,6 +20,8 @@ export const viewport: Viewport = {
   maximumScale: 1,
 };
 
+import { ToastProvider } from '@/components/ToastProvider';
+
 export default function RootLayout({
   children,
 }: {
@@ -34,6 +36,7 @@ export default function RootLayout({
       </head>
       <body>
         <AppContextProvider>
+          <ToastProvider />
           <NavSidebar />
           {children}
           <Footer />

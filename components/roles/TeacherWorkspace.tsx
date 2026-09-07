@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { Student, Submission } from '@/data/initialData';
+import { toast } from 'react-toastify';
 
 interface TeacherWorkspaceProps {
   view?: 'dashboard' | 'verification' | 'student-management' | 'profile';
@@ -470,7 +471,7 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
 
   const handleBulkApproveSelected = () => {
     if (!evaluationOpen) {
-      alert('Evaluation access is currently CLOSED by system administrator.');
+      toast.error('Evaluation access is currently CLOSED by system administrator.');
       return;
     }
     if (selectedStudentIds.length === 0) return;
@@ -498,7 +499,7 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
 
   const handleApproveAllPending = () => {
     if (!evaluationOpen) {
-      alert('Evaluation access is currently CLOSED by system administrator.');
+      toast.error('Evaluation access is currently CLOSED by system administrator.');
       return;
     }
     const pendingSubsToApprove = submissions.filter(
@@ -540,7 +541,7 @@ export const TeacherWorkspace: React.FC<TeacherWorkspaceProps> = ({ view }) => {
 
   const handleCSVUpload = (e: React.FormEvent) => {
     e.preventDefault();
-    alert('Simulated Import: 3 students parsed from CSV and added successfully!');
+    toast.success('Simulated Import: 3 students parsed from CSV and added successfully!');
     addStudent({ name: 'Bhavya Sharma', className: 'BSc CS A' });
     addStudent({ name: 'Chitra Sharma', className: 'BSc CS A' });
     showToast('Students imported from CSV successfully.');

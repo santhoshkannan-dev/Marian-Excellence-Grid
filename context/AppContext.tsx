@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toast } from 'react-toastify';
 import {
   CriteriaCategory,
   CriteriaItem,
@@ -982,7 +983,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else {
         const errData = await res.json().catch(() => ({}));
         const errMsg = errData.error || errData.detail || (typeof errData === 'object' && Object.keys(errData).length ? JSON.stringify(errData) : 'Failed to create submission.');
-        alert(errMsg);
+        toast.error(errMsg);
         setSubmissions((prev) => prev.filter((s) => s.id !== tempId));
       }
     } catch (err: any) {
@@ -1040,7 +1041,7 @@ export const AppContextProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       } else {
         const errData = await res.json().catch(() => ({}));
         const errMsg = errData.error || errData.detail || errData.message || (typeof errData === 'string' ? errData : null);
-        alert(errMsg || 'Failed to update submission.');
+        toast.error(errMsg || 'Failed to update submission.');
         fetchSubmissions();
       }
     } catch (err: any) {

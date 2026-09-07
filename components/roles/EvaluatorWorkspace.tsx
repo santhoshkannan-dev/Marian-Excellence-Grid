@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { toast } from 'react-toastify';
 
 interface EvaluatorWorkspaceProps {
   view?: 'dashboard' | 'evaluation';
@@ -60,7 +61,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
 
   const handleVerifySubmissionEvaluator = (subId: number) => {
     if (!evaluationOpen) {
-      alert('Evaluation access is currently CLOSED by system administrator.');
+      toast.error('Evaluation access is currently CLOSED by system administrator.');
       return;
     }
 
@@ -69,7 +70,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
 
     const item = criteriaCatalog.flatMap(c => c.items).find(it => String(it.id) === String(sub.criteriaId));
     if (!item) {
-      alert("Criteria item not found in catalog!");
+      toast.error("Criteria item not found in catalog!");
       return;
     }
 
@@ -145,7 +146,7 @@ export const EvaluatorWorkspace: React.FC<EvaluatorWorkspaceProps> = ({ view = '
       marks: calculatedMarks
     });
 
-    alert(`Submission successfully verified and assigned ${calculatedMarks} marks!`);
+    toast.success(`Submission successfully verified and assigned ${calculatedMarks} marks!`);
   };
 
   const getSubmissionMarks = (s: any) => {
