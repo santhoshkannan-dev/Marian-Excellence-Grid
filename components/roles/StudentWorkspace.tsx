@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useApp } from '@/context/AppContext';
 import { Submission, CriteriaItem } from '@/data/initialData';
 import { toast } from 'react-toastify';
+import { CustomModal } from '@/components/CustomModal';
 
 interface StudentWorkspaceProps {
   view?: 'dashboard' | 'submit' | 'submissions' | 'verification' | 'profile';
@@ -29,6 +30,7 @@ const matchItem = (item: any, val: any) => {
 
 export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
   const router = useRouter();
+  const [deleteSubIdModal, setDeleteSubIdModal] = useState<number | null>(null);
   const {
     submissions,
     fetchSubmissions,
@@ -2232,11 +2234,7 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
                                 </button>
                                 <button
                                   className="btn btn-sm btn-danger"
-                                  onClick={() => {
-                                    if (window.confirm('Are you sure you want to delete this pending submission?')) {
-                                      deleteSubmission(sub.id);
-                                    }
-                                  }}
+                                  onClick={() => setDeleteSubIdModal(sub.id)}
                                   title="Delete Pending Submission"
                                   style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
                                 >
@@ -2659,6 +2657,25 @@ export const StudentWorkspace: React.FC<StudentWorkspaceProps> = ({ view }) => {
           </div>
         )}
       </div>
+
+      {/* Delete Submission Confirm Modal */}
+      <CustomModal
+        isOpen={deleteSubIdModal !== null}
+        onClose={() => setDeleteSubIdModal(null)}
+        title="Delete Pending Submission"
+        icon="🗑️"
+        description="Are you sure you want to delete this pending submission? This action cannot be undone."
+        confirmText="Delete Submission"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (deleteSubIdModal !== null) {
+            deleteSubmission(deleteSubIdModal);
+            setDeleteSubIdModal(null);
+            toast.info('Submission deleted.');
+          }
+        }}
+      />
     </div>
   );
 };

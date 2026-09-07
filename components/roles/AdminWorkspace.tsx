@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { toast } from 'react-toastify';
 import { DepartmentHierarchyManager } from '@/components/admin/DepartmentHierarchyManager';
+import { CustomModal } from '@/components/CustomModal';
 
 interface AdminWorkspaceProps {
   view?: 'years' | 'criteria' | 'users' | 'departments' | 'settings' | 'champions';
@@ -118,9 +119,18 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   };
 
   const handleDeleteYear = (targetYear: string) => {
-    if (window.confirm(`Are you sure you want to delete academic year "${targetYear}"?`)) {
-      deleteAcademicYearGlobal(targetYear);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Academic Year',
+      description: `Are you sure you want to delete academic year "${targetYear}"? This action cannot be undone.`,
+      confirmText: 'Delete Year',
+      confirmVariant: 'danger',
+      onConfirm: () => {
+        deleteAcademicYearGlobal(targetYear);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        toast.info(`Academic year "${targetYear}" deleted.`);
+      },
+    });
   };
 
   // ----------------------------------------------------
@@ -136,6 +146,36 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   const [newItemMarks, setNewItemMarks] = useState(5);
   const [newItemDetails, setNewItemDetails] = useState('');
 
+  // Custom Modal States
+  const [showAddCategoryModal, setShowAddCategoryModal] = useState(false);
+  const [newCatTitleModal, setNewCatTitleModal] = useState('');
+  const [newCatDescModal, setNewCatDescModal] = useState('');
+  const [newCatAccessModal, setNewCatAccessModal] = useState<'all_students' | 'student_rep_only'>('all_students');
+
+  const [showAddUserModal, setShowAddUserModal] = useState(false);
+  const [newUserNameModal, setNewUserNameModal] = useState('');
+  const [newUserEmailModal, setNewUserEmailModal] = useState('');
+  const [newUserRoleModal, setNewUserRoleModal] = useState('student');
+  const [newUserDeptModal, setNewUserDeptModal] = useState('CS');
+  const [newUserClassModal, setNewUserClassModal] = useState('BCA A');
+
+  // Generic Confirm Modal State
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    confirmVariant?: 'primary' | 'danger' | 'warning';
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    confirmText: 'Delete',
+    confirmVariant: 'danger',
+    onConfirm: () => {},
+  });
+
   // State to hold pending teacher selections before confirmation
   const [pendingClassTeachers, setPendingClassTeachers] = useState<Record<string, string>>({});
 
@@ -147,12 +187,11 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
     details: string;
   }
 
-  const handleAddCategory = () => {
-    const title = prompt('Enter Category Name:');
-    if (!title) return;
-    const desc = prompt('Enter Category Description:') || 'Custom category description.';
-    const id = (criteriaCatalog.length + 1).toString();
-    addCriteriaCategory({ code: `cat-${Date.now()}`, category: title, accessLevel: 'all_students' });
+  const handleOpenAddCategoryModal = () => {
+    setNewCatTitleModal('');
+    setNewCatDescModal('');
+    setNewCatAccessModal('all_students');
+    setShowAddCategoryModal(true);
   };
 
   const handleCreateCriteriaItem = (e: React.FormEvent) => {
@@ -172,9 +211,18 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   };
 
   const handleDeleteCriteriaItem = (catId: string, itemId: string) => {
-    if (window.confirm('Are you sure you want to delete this evaluation item?')) {
-      deleteCriteriaItem(catId, parseInt(itemId, 10));
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Evaluation Item',
+      description: 'Are you sure you want to delete this evaluation item?',
+      confirmText: 'Delete Item',
+      confirmVariant: 'danger',
+      onConfirm: () => {
+        deleteCriteriaItem(catId, parseInt(itemId, 10));
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        toast.info('Evaluation item deleted.');
+      },
+    });
   };
 
   const handleEditCriteriaItemPrompt = (catId: string, itemId: string) => {
@@ -238,16 +286,13 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   const totalUserPages = Math.ceil(filteredUsers.length / userPageSize) || 1;
   const paginatedUsers = filteredUsers.slice((userPage - 1) * userPageSize, userPage * userPageSize);
 
-  const handleAddUserPrompt = () => {
-    const name = prompt('Enter User Name:');
-    if (!name) return;
-    const email = prompt('Enter User Email:');
-    if (!email) return;
-    const role = prompt('Enter Role (Student / Faculty / Evaluation / Admin):') || 'Student';
-    const department = prompt('Enter Department Code (e.g. CS, MCA):') || 'CS';
-    const className = prompt('Enter Class Name (e.g. BCA A, MCA):') || 'BCA A';
-
-    addUserGlobal(email, role.toLowerCase(), name, department, className);
+  const handleOpenAddUserModal = () => {
+    setNewUserNameModal('');
+    setNewUserEmailModal('');
+    setNewUserRoleModal('student');
+    setNewUserDeptModal('CS');
+    setNewUserClassModal('BCA A');
+    setShowAddUserModal(true);
   };
 
   // ----------------------------------------------------
@@ -296,12 +341,20 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
   };
 
   const handleDeleteDept = (deptName: string) => {
-    // Find department code by name
     const dept = departments?.find(d => d.name === deptName || d.code === deptName);
     const code = dept ? dept.code : deptName;
-    if (window.confirm(`Are you sure you want to delete department ${code}?`)) {
-      deleteDepartmentGlobal(code);
-    }
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Department',
+      description: `Are you sure you want to delete department ${code}?`,
+      confirmText: 'Delete Department',
+      confirmVariant: 'danger',
+      onConfirm: () => {
+        deleteDepartmentGlobal(code);
+        setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+        toast.info(`Department "${code}" deleted.`);
+      },
+    });
   };
 
   const handleAddClass = (deptName: string) => {
@@ -757,7 +810,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
                     <button
                       className="btn"
                       style={{ background: '#f97316', color: '#ffffff', fontWeight: 700 }}
-                      onClick={handleAddCategory}
+                      onClick={handleOpenAddCategoryModal}
                     >
                       + Add Category
                     </button>
@@ -792,9 +845,18 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
                                 style={{ background: 'transparent', color: '#ef4444', border: 'none', padding: 0 }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  if (window.confirm('Delete this category?')) {
-                                    deleteCriteriaCategory(c.id);
-                                  }
+                                  setConfirmModal({
+                                    isOpen: true,
+                                    title: 'Delete Category',
+                                    description: `Are you sure you want to delete category "${c.category}"?`,
+                                    confirmText: 'Delete Category',
+                                    confirmVariant: 'danger',
+                                    onConfirm: () => {
+                                      deleteCriteriaCategory(c.id);
+                                      setConfirmModal((prev) => ({ ...prev, isOpen: false }));
+                                      toast.info(`Category "${c.category}" deleted.`);
+                                    },
+                                  });
                                 }}
                             >
                                 Delete
@@ -828,7 +890,7 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
               <button
                 className="btn"
                 style={{ background: '#f97316', color: '#ffffff', fontWeight: 700 }}
-                onClick={handleAddUserPrompt}
+                onClick={handleOpenAddUserModal}
               >
                 Add User
               </button>
@@ -1535,6 +1597,200 @@ export const AdminWorkspace: React.FC<AdminWorkspaceProps> = ({ view }) => {
           </div>
         );
       })()}
+
+      {/* ---------------------------------------------------- */}
+      {/* ADD CATEGORY MODAL                                   */}
+      {/* ---------------------------------------------------- */}
+      <CustomModal
+        isOpen={showAddCategoryModal}
+        onClose={() => setShowAddCategoryModal(false)}
+        title="Add Criteria Category"
+        icon="⚡"
+        description="Create a new category for student/class evaluations."
+        confirmText="Create Category"
+        cancelText="Cancel"
+        onConfirm={() => {
+          if (!newCatTitleModal.trim()) {
+            toast.warning('Please enter a category name');
+            return;
+          }
+          addCriteriaCategory({
+            code: `cat-${Date.now()}`,
+            category: newCatTitleModal.trim(),
+            accessLevel: newCatAccessModal,
+            desc: newCatDescModal.trim() || 'Custom category description.'
+          } as any);
+          setShowAddCategoryModal(false);
+          toast.success(`Category "${newCatTitleModal}" created successfully!`);
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              CATEGORY NAME <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. Innovation & Sustainable Suggestion"
+              value={newCatTitleModal}
+              onChange={(e) => setNewCatTitleModal(e.target.value)}
+              style={{ width: '100%' }}
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              DESCRIPTION
+            </label>
+            <textarea
+              className="input"
+              rows={3}
+              placeholder="Enter details about this evaluation category..."
+              value={newCatDescModal}
+              onChange={(e) => setNewCatDescModal(e.target.value)}
+              style={{ width: '100%', resize: 'vertical' }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              ACCESS LEVEL
+            </label>
+            <select
+              className="select"
+              value={newCatAccessModal}
+              onChange={(e: any) => setNewCatAccessModal(e.target.value)}
+              style={{ width: '100%' }}
+            >
+              <option value="all_students">All Students</option>
+              <option value="student_rep_only">Student Rep Only</option>
+            </select>
+          </div>
+        </div>
+      </CustomModal>
+
+      {/* ---------------------------------------------------- */}
+      {/* ADD USER MODAL                                       */}
+      {/* ---------------------------------------------------- */}
+      <CustomModal
+        isOpen={showAddUserModal}
+        onClose={() => setShowAddUserModal(false)}
+        title="Add New User"
+        icon="👤"
+        description="Register a new user account in the system."
+        confirmText="Add User"
+        cancelText="Cancel"
+        onConfirm={() => {
+          if (!newUserNameModal.trim() || !newUserEmailModal.trim()) {
+            toast.warning('Please fill in both Name and Email');
+            return;
+          }
+          addUserGlobal(
+            newUserEmailModal.trim(),
+            newUserRoleModal.toLowerCase(),
+            newUserNameModal.trim(),
+            newUserDeptModal.trim(),
+            newUserClassModal.trim()
+          );
+          setShowAddUserModal(false);
+          toast.success(`User "${newUserNameModal}" added successfully!`);
+        }}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginTop: '12px' }}>
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              FULL NAME <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. Santhosh Kannan"
+              value={newUserNameModal}
+              onChange={(e) => setNewUserNameModal(e.target.value)}
+              style={{ width: '100%' }}
+              autoFocus
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              EMAIL ADDRESS <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <input
+              type="email"
+              className="input"
+              placeholder="e.g. santhosh.25pmc152@mariancollege.org"
+              value={newUserEmailModal}
+              onChange={(e) => setNewUserEmailModal(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                ROLE
+              </label>
+              <select
+                className="select"
+                value={newUserRoleModal}
+                onChange={(e) => setNewUserRoleModal(e.target.value)}
+                style={{ width: '100%' }}
+              >
+                <option value="student">Student</option>
+                <option value="faculty">Faculty / Class Teacher</option>
+                <option value="evaluation">Evaluator</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                DEPARTMENT CODE
+              </label>
+              <input
+                type="text"
+                className="input"
+                placeholder="e.g. CS"
+                value={newUserDeptModal}
+                onChange={(e) => setNewUserDeptModal(e.target.value)}
+                style={{ width: '100%' }}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+              CLASS NAME
+            </label>
+            <input
+              type="text"
+              className="input"
+              placeholder="e.g. BCA A or II MCA"
+              value={newUserClassModal}
+              onChange={(e) => setNewUserClassModal(e.target.value)}
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
+      </CustomModal>
+
+      {/* ---------------------------------------------------- */}
+      {/* GENERIC CONFIRMATION MODAL                           */}
+      {/* ---------------------------------------------------- */}
+      <CustomModal
+        isOpen={confirmModal.isOpen}
+        onClose={() => setConfirmModal((prev) => ({ ...prev, isOpen: false }))}
+        title={confirmModal.title}
+        icon="⚠️"
+        description={confirmModal.description}
+        confirmText={confirmModal.confirmText || 'Confirm'}
+        cancelText="Cancel"
+        confirmVariant={confirmModal.confirmVariant || 'danger'}
+        onConfirm={confirmModal.onConfirm}
+      />
 
     </div>
   );

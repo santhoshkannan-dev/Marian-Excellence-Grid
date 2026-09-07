@@ -4,9 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { toast } from 'react-toastify';
 import { useApp } from '@/context/AppContext';
 import { Champion } from '@/data/initialData';
+import { toast } from 'react-toastify';
+import { CustomModal } from '@/components/CustomModal';
 
 export default function ChampionsManagementPage() {
   const { championsData, fetchChampions, academicYears, classes } = useApp();
+  const [deleteChampIdModal, setDeleteChampIdModal] = useState<number | null>(null);
   const [year, setYear] = useState(academicYears?.[0] || '');
   const [category, setCategory] = useState<'UG' | 'PG'>('UG');
   const [rank, setRank] = useState(1);
@@ -99,18 +102,19 @@ export default function ChampionsManagementPage() {
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this champion?')) return;
-
+  const confirmDeleteChamp = async (id: number) => {
     try {
       const res = await fetch(`http://localhost:8000/api/champions/${id}/`, {
         method: 'DELETE',
       });
       if (res.ok) {
         await fetchChampions();
+        toast.info('Champion deleted.');
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setDeleteChampIdModal(null);
     }
   };
 
@@ -418,17 +422,10 @@ export default function ChampionsManagementPage() {
 
                             <button
                               onClick={() => champ.id && handleDelete(champ.id)}
-                              style={{
-                                padding: '5px 12px',
-                                background: '#fee2e2',
-                                color: '#dc2626',
-                                border: '1px solid #fca5a5',
-                                borderRadius: '8px',
-                                fontSize: '0.78rem',
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                transition: 'all 0.2s ease'
-                              }}
+                              type="button"
+                              className="btn btn-sm"
+                              style={{ background: '#fee2e2', color: '#dc2626', border: '1px solid #fca5a5', fontWeight: 700 }}
+                              onClick={() => setDeleteChampIdModal(champ.id)}
                             >
                               Delete
                             </button>
@@ -442,6 +439,23 @@ export default function ChampionsManagementPage() {
             })
         )}
       </div>
+
+      {/* Delete Champion Custom Modal */}
+      <CustomModal
+        isOpen={deleteChampIdModal !== null}
+        onClose={() => setDeleteChampIdModal(null)}
+        title="Delete Champion"
+        icon="🏆"
+        description="Are you sure you want to delete this champion record? This action cannot be undone."
+        confirmText="Delete Champion"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (deleteChampIdModal !== null) {
+            confirmDeleteChamp(deleteChampIdModal);
+          }
+        }}
+      />
     </div>
   );
 }

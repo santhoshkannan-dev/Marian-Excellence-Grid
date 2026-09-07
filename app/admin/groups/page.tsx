@@ -2,9 +2,11 @@
 
 import React, { useState } from 'react';
 import { useApp } from '@/context/AppContext';
+import { CustomModal } from '@/components/CustomModal';
 
 export default function AdminGroupsPage() {
   const { userGroups, users, addUserGroup, deleteUserGroup, addUserToGroup, removeUserFromGroup } = useApp();
+  const [deleteGroupModal, setDeleteGroupModal] = useState<{ id: string; name: string } | null>(null);
 
   // Create Group State
   const [newGroupName, setNewGroupName] = useState('');
@@ -285,11 +287,7 @@ export default function AdminGroupsPage() {
                   <button
                     className="btn btn-danger"
                     style={{ padding: '6px 14px', fontSize: '0.8rem', fontWeight: 700 }}
-                    onClick={() => {
-                      if (window.confirm(`Are you sure you want to delete the group "${group.name}"? This action cannot be undone.`)) {
-                        deleteUserGroup(group.id);
-                      }
-                    }}
+                    onClick={() => setDeleteGroupModal({ id: group.id, name: group.name })}
                   >
                     🗑️ Delete Group
                   </button>
@@ -299,6 +297,24 @@ export default function AdminGroupsPage() {
           })}
         </div>
       </div>
+
+      {/* Delete Group Custom Modal */}
+      <CustomModal
+        isOpen={deleteGroupModal !== null}
+        onClose={() => setDeleteGroupModal(null)}
+        title="Delete User Group"
+        icon="🗑️"
+        description={deleteGroupModal ? `Are you sure you want to delete the group "${deleteGroupModal.name}"? This action cannot be undone.` : ''}
+        confirmText="Delete Group"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        onConfirm={() => {
+          if (deleteGroupModal) {
+            deleteUserGroup(deleteGroupModal.id);
+            setDeleteGroupModal(null);
+          }
+        }}
+      />
     </div>
   );
 }
